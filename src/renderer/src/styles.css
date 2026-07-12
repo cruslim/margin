@@ -264,6 +264,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 }
 .line-extends .chat-text { color: var(--text); }
 .comment-composer { color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; }
+/* The diff lib forces `color: initial` on EVERY element inside extend/widget
+   wrappers (.diff-line-extend-wrapper * rule), which blacks out markdown
+   children (<p>, <li>, <code>…). Same-specificity counter, loaded later: */
+.line-extends *, .comment-composer * { color: inherit; }
 .comment-composer { padding: 12px 16px; background: var(--bg-panel); border-block: 1px solid var(--border); }
 .comment-composer .chat-input { border-top: none; padding: 0; width: min(100%, 720px); }
 .comment-thread {

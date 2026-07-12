@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { openRepo, changedFiles, fileDiff, applyPatch } from './gitService.js';
 import { runReview } from '../engine/review.js';
 import { chat } from '../engine/chat.js';
-import { removeWorktree } from '../engine/worktree.js';
+import { createWorktree, removeWorktree } from '../engine/worktree.js';
 import * as storage from './storage.js';
 import type { ReviewTarget } from '../engine/types.js';
 import type { RepoInfo, Session } from '../shared/ipc.js';
@@ -87,7 +87,11 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('chat:send', async (event, sessionKey: string, sdkSessionId: string, workDir: string, message: string) => {
+  ipcMain.handle('workdir:prepare', (_e, target: ReviewTarget) =>
+    target.headRef ? createWorktree(target.repoPath, target.headRef) : target.repoPath,
+  );
+
+  ipcMain.handle('chat:send', async (event, sessionKey: string, sdkSessionId: string | null, workDir: string, message: string) => {
     const sender = event.sender;
     try {
       return await chat(sdkSessionId, workDir, message, {
@@ -96,7 +100,7 @@ app.whenReady().then(() => {
         },
       });
     } finally {
-      if (process.env.MARGIN_SMOKE_CHAT) {
+      if (process.env.MARGIN_SMOKE_CHAT || process.env.MARGIN_SMOKE_COMMENT) {
         captureAndQuit(BrowserWindow.fromWebContents(sender)!, 3000);
       }
     }
@@ -107,7 +111,8 @@ app.whenReady().then(() => {
   const win = createWindow();
 
   // Smoke-test mode: load a preconfigured session, screenshot the window, quit.
-  if (process.env.MARGIN_SMOKE && !process.env.MARGIN_SMOKE_RUN) {
+  // (When RUN/COMMENT are set, the capture is triggered by that flow finishing instead.)
+  if (process.env.MARGIN_SMOKE && !process.env.MARGIN_SMOKE_RUN && !process.env.MARGIN_SMOKE_COMMENT) {
     win.webContents.on('did-finish-load', () => captureAndQuit(win, 4500));
   }
 });

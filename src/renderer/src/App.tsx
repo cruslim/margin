@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangedFile, ChatMessage, Finding, RepoInfo, ReviewTarget, Session } from '../../shared/ipc.js';
+import type { ChangedFile, ChatMessage, Comment, Finding, RepoInfo, ReviewTarget, Session } from '../../shared/ipc.js';
 import { Sidebar } from './components/Sidebar.js';
 import { DiffPane } from './components/DiffPane.js';
 import { ReviewPanel } from './components/ReviewPanel.js';
@@ -240,10 +240,90 @@ export function App() {
     [appendChatMessage],
   );
 
+  const appendToComment = useCallback(
+    (sessionKey: string, commentId: string, msg: ChatMessage) => {
+      patchSession(sessionKey, (s) => ({
+        comments: (s.comments ?? []).map((c) => (c.id === commentId ? { ...c, messages: [...c.messages, msg] } : c)),
+      }));
+    },
+    [patchSession],
+  );
+
+  const applyPatchToComment = useCallback(
+    async (session: Session, patch: string, commentId: string) => {
+      if (!window.confirm(`Apply this patch to the working copy of ${session.repoName}?`)) return;
+      const res = await window.margin.applyPatch(session.repoPath, patch);
+      appendToComment(session.key, commentId, {
+        role: 'assistant',
+        text: res.ok ? '✔ Patch applied to the working copy.' : `✘ git apply failed:\n${res.error}`,
+        at: Date.now(),
+      });
+    },
+    [appendToComment],
+  );
+
+  const runCommentTurn = useCallback(
+    async (session: Session, commentId: string, prompt: string) => {
+      setChatBusy((b) => ({ ...b, [session.key]: true }));
+      try {
+        // Comments work before any review ran: lazily prepare a workdir and
+        // let chat() start a fresh session when there's nothing to resume.
+        const workDir = session.workDir ?? (await window.margin.prepareWorkdir(targetOf(session)));
+        const reply = await window.margin.sendChat(session.key, session.sdkSessionId ?? null, workDir, prompt);
+        patchSession(session.key, (s) => ({
+          sdkSessionId: reply.sessionId,
+          workDir,
+          costUsd: (s.costUsd ?? 0) + (reply.costUsd ?? 0),
+        }));
+        appendToComment(session.key, commentId, { role: 'assistant', text: reply.text, at: Date.now() });
+      } catch (err) {
+        appendToComment(session.key, commentId, { role: 'assistant', text: `Error: ${String(err)}`, at: Date.now() });
+      } finally {
+        setChatBusy((b) => ({ ...b, [session.key]: false }));
+      }
+    },
+    [appendToComment, patchSession],
+  );
+
+  const addComment = useCallback(
+    (session: Session, file: string, side: 'old' | 'new', line: number, quoted: string, text: string) => {
+      if (chatBusy[session.key]) return;
+      const comment: Comment = {
+        id: crypto.randomUUID(),
+        file,
+        side,
+        startLine: line,
+        endLine: line,
+        messages: [{ role: 'user', text, at: Date.now() }],
+      };
+      patchSession(session.key, (s) => ({ comments: [...(s.comments ?? []), comment] }));
+      const prompt =
+        `The user commented on ${file}, line ${line} (${side === 'old' ? 'old/removed side of the diff' : 'new version'}).` +
+        (quoted ? `\nThe line reads:\n\`\`\`\n${quoted}\n\`\`\`` : '') +
+        `\nChangeset under review: ${session.baseRef}...${session.headRef ?? 'working tree'}.\n\n${text}`;
+      runCommentTurn(session, comment.id, prompt);
+    },
+    [chatBusy, patchSession, runCommentTurn],
+  );
+
+  const replyComment = useCallback(
+    (session: Session, comment: Comment, text: string) => {
+      if (chatBusy[session.key]) return;
+      appendToComment(session.key, comment.id, { role: 'user', text, at: Date.now() });
+      const prompt = `Continuing the comment thread on ${comment.file}:${comment.endLine} (${comment.side} side):\n\n${text}`;
+      runCommentTurn(session, comment.id, prompt);
+    },
+    [chatBusy, appendToComment, runCommentTurn],
+  );
+
   // Smoke-test mode: preload a session for the configured repo, optionally auto-run the review.
+  // Guarded to run exactly once — its callback deps change identity as state updates,
+  // and re-running would re-create the session (and re-fire the AI call) in a loop.
+  const smokeRan = useRef(false);
   useEffect(() => {
     const smoke = window.margin.smokeConfig();
-    if (!smoke?.repo) return;
+    if (!smoke?.repo || smokeRan.current) return;
+    smokeRan.current = true;
     window.margin.openRepo(smoke.repo).then((repo) => {
       if (!repo) return;
       setRepos([repo]);
@@ -269,14 +349,23 @@ export function App() {
             sendChatCore(session.key, result.sessionId, result.workDir, smoke.chat, smoke.chat, 0);
           }
         });
+      } else if (smoke.comment) {
+        // Exercise the lazy-session path: comment on a line with no review run.
+        window.margin.changedFiles(targetOf(session)).then((files) => {
+          if (files[0]) addComment(session, files[0].path, 'new', 20, '', smoke.comment);
+        });
       }
     });
-  }, [runReview, sendChatCore]);
+  }, [runReview, sendChatCore, addComment]);
 
   const activeFindings = active?.findings ?? [];
   const fileFindings = useMemo(
     () => activeFindings.filter((f) => f.file === selectedFile),
     [activeFindings, selectedFile],
+  );
+  const fileComments = useMemo(
+    () => (active?.comments ?? []).filter((c) => c.file === selectedFile),
+    [active?.comments, selectedFile],
   );
 
   return (
@@ -324,7 +413,16 @@ export function App() {
             </nav>
             <section className="diffpane">
               {selectedFile ? (
-                <DiffPane target={targetOf(active)} path={selectedFile} findings={fileFindings} />
+                <DiffPane
+                  target={targetOf(active)}
+                  path={selectedFile}
+                  findings={fileFindings}
+                  comments={fileComments}
+                  busy={!!chatBusy[active.key]}
+                  onAddComment={(file, side, line, quoted, text) => addComment(active, file, side, line, quoted, text)}
+                  onReplyComment={(comment, text) => replyComment(active, comment, text)}
+                  onApplyPatch={(patch, commentId) => applyPatchToComment(active, patch, commentId)}
+                />
               ) : (
                 <div className="empty-note">Select a file</div>
               )}

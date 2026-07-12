@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, Finding } from '../../../shared/ipc.js';
 import type { Session } from '../App.js';
 import { FindingCard } from './FindingCard.js';
+import { ChatBubble, ChatInput } from './ChatParts.js';
 
 const SEV_ORDER: Record<Finding['severity'], number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -182,72 +183,6 @@ function ChatTab(props: {
         {props.busy && <div className="busy-dot">thinking…</div>}
       </div>
       <ChatInput disabled={props.busy} placeholder="Ask about this changeset…" onSend={props.onSend} />
-    </div>
-  );
-}
-
-/** Splits ```diff fences out of a message so patches render with an Apply button. */
-function splitDiffBlocks(text: string): Array<{ type: 'text' | 'diff'; content: string }> {
-  const parts: Array<{ type: 'text' | 'diff'; content: string }> = [];
-  const re = /```diff\n([\s\S]*?)```/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
-    if (m.index > last) parts.push({ type: 'text', content: text.slice(last, m.index).trim() });
-    parts.push({ type: 'diff', content: m[1] });
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) parts.push({ type: 'text', content: text.slice(last).trim() });
-  return parts.filter((p) => p.content);
-}
-
-function ChatBubble(props: { msg: ChatMessage; onApplyPatch: (patch: string) => void }) {
-  const { msg } = props;
-  const parts = msg.role === 'assistant' ? splitDiffBlocks(msg.text) : [{ type: 'text' as const, content: msg.text }];
-  return (
-    <div className={`chat-msg ${msg.role}`}>
-      {parts.map((p, i) =>
-        p.type === 'diff' ? (
-          <div key={i} className="patch-block">
-            <pre>{p.content}</pre>
-            <button className="run-btn small" onClick={() => props.onApplyPatch(p.content)}>
-              Apply patch
-            </button>
-          </div>
-        ) : (
-          <div key={i} className="chat-text">{p.content}</div>
-        ),
-      )}
-    </div>
-  );
-}
-
-function ChatInput(props: { disabled: boolean; placeholder: string; onSend: (text: string) => void }) {
-  const [text, setText] = useState('');
-  const send = () => {
-    const t = text.trim();
-    if (!t || props.disabled) return;
-    props.onSend(t);
-    setText('');
-  };
-  return (
-    <div className="chat-input">
-      <textarea
-        value={text}
-        placeholder={props.placeholder}
-        rows={2}
-        disabled={props.disabled}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            send();
-          }
-        }}
-      />
-      <button className="run-btn small" disabled={props.disabled || !text.trim()} onClick={send}>
-        Send
-      </button>
     </div>
   );
 }

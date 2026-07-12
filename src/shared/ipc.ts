@@ -34,6 +34,16 @@ export interface ChatReply {
   costUsd: number | null;
 }
 
+/** A user-initiated thread anchored to lines in the diff (GitHub-style review comment). */
+export interface Comment {
+  id: string;
+  file: string;
+  side: 'old' | 'new';
+  startLine: number;
+  endLine: number;
+  messages: ChatMessage[];
+}
+
 export interface Session {
   key: string;
   createdAt?: number;
@@ -55,6 +65,8 @@ export interface Session {
   chat?: ChatMessage[];
   /** Per-finding reply threads, keyed by finding index. */
   threads?: Record<number, ChatMessage[]>;
+  /** User-initiated line-anchored comment threads. */
+  comments?: Comment[];
 }
 
 export interface PersistedState {
@@ -72,8 +84,10 @@ export interface MarginApi {
   onReviewProgress(cb: (sessionKey: string, line: string) => void): () => void;
   /** Remove a session's temp worktree when the session is deleted. */
   cleanupWorktree(repoPath: string, workDir: string): Promise<void>;
-  /** Send a follow-up turn into a review session (chat). Progress streams via onReviewProgress. */
-  sendChat(sessionKey: string, sdkSessionId: string, workDir: string, message: string): Promise<ChatReply>;
+  /** Send a chat turn. Resumes sdkSessionId, or starts a fresh session in workDir when null. */
+  sendChat(sessionKey: string, sdkSessionId: string | null, workDir: string, message: string): Promise<ChatReply>;
+  /** Ensure a workdir exists for a session (temp worktree for branch reviews) before any review ran. */
+  prepareWorkdir(target: ReviewTarget): Promise<string>;
   /** Apply a unified diff to the repo's working copy. Runs `git apply --check` first. */
   applyPatch(repoPath: string, patch: string): Promise<{ ok: boolean; error?: string }>;
   loadState(): Promise<PersistedState>;
@@ -81,7 +95,7 @@ export interface MarginApi {
   saveSessions(sessions: Session[]): Promise<void>;
   deleteSession(session: Session): Promise<void>;
   removeRepoData(repoPath: string): Promise<void>;
-  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string } | null;
+  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string } | null;
 }
 
 export type { Finding, ReviewResult, ReviewTarget };

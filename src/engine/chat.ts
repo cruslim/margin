@@ -10,25 +10,27 @@ export interface ChatEvents {
   onProgress?: (line: string) => void;
 }
 
+const FRESH_SESSION_PROMPT = `You are Margin, a code review assistant. You are answering questions about a changeset inside a checkout of the repository. Explore with Read/Grep/Glob to ground your answers in the actual code. Be concise and concrete.`;
+
 /**
- * Continue a review session with a follow-up question — the basis of both
- * finding-level threads and the general chat tab. The resumed session keeps
- * everything the reviewer already read and found.
+ * Send a chat turn. With a sessionId, resumes that review session — it keeps
+ * everything the reviewer already read and found. With null (commenting before
+ * any review ran), starts a fresh session in the workDir.
  */
 export async function chat(
-  sessionId: string,
+  sessionId: string | null,
   workDir: string,
   message: string,
   events: ChatEvents = {},
 ): Promise<ChatReply> {
-  let newSessionId = sessionId;
+  let newSessionId = sessionId ?? '';
   let text = '';
   let costUsd: number | null = null;
 
   const stream = query({
     prompt: message,
     options: {
-      resume: sessionId,
+      ...(sessionId ? { resume: sessionId } : { systemPrompt: FRESH_SESSION_PROMPT }),
       cwd: workDir,
       allowedTools: ['Read', 'Grep', 'Glob'],
       disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'],

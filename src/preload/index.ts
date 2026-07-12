@@ -11,6 +11,7 @@ const api: MarginApi = {
   sendChat: (sessionKey, sdkSessionId, workDir, message) =>
     ipcRenderer.invoke('chat:send', sessionKey, sdkSessionId, workDir, message),
   applyPatch: (repoPath, patch) => ipcRenderer.invoke('patch:apply', repoPath, patch),
+  prepareWorkdir: (target) => ipcRenderer.invoke('workdir:prepare', target),
   loadState: () => ipcRenderer.invoke('storage:load'),
   saveRepo: (repo) => ipcRenderer.invoke('storage:saveRepo', repo),
   saveSessions: (sessions) => ipcRenderer.invoke('storage:saveSessions', sessions),
@@ -29,6 +30,7 @@ const api: MarginApi = {
           head: process.env.MARGIN_SMOKE_HEAD ?? '',
           run: !!process.env.MARGIN_SMOKE_RUN,
           chat: process.env.MARGIN_SMOKE_CHAT ?? '',
+          comment: process.env.MARGIN_SMOKE_COMMENT ?? '',
         }
       : null,
 };

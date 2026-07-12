@@ -243,6 +243,27 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .finding-card.sev-low { border-left-color: var(--text-dim); }
 .finding-card.inline { margin: 6px 12px; max-width: 620px; }
 
+.line-extends { display: flex; flex-direction: column; }
+.comment-composer { padding: 8px 12px; background: var(--bg-panel); border-block: 1px solid var(--border); }
+.comment-composer .chat-input { border-top: none; padding: 0; max-width: 640px; }
+.comment-thread {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 7px;
+  padding: 10px;
+  margin: 6px 12px;
+  max-width: 620px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  user-select: text;
+}
+.comment-head { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.comment-title { font-weight: 700; text-transform: uppercase; font-size: 9.5px; letter-spacing: 0.5px; background: var(--accent); color: #10101a; border-radius: 4px; padding: 1px 6px; }
+.comment-loc { color: var(--text-dim); margin-left: auto; }
+.comment-thread .chat-input { border-top: none; padding: 0; }
+
 .finding-head { display: flex; align-items: center; gap: 8px; font-size: 11px; }
 .sev-pill {
   font-weight: 700;

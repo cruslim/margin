@@ -56,7 +56,7 @@ export function ChatInput(props: {
       <textarea
         value={text}
         placeholder={props.placeholder}
-        rows={2}
+        rows={3}
         autoFocus={props.autoFocus}
         disabled={props.disabled}
         onChange={(e) => setText(e.target.value)}
@@ -68,12 +68,14 @@ export function ChatInput(props: {
           if (e.key === 'Escape') props.onCancel?.();
         }}
       />
-      {props.onCancel && (
-        <button className="icon-btn" onClick={props.onCancel}>Cancel</button>
-      )}
-      <button className="run-btn small" disabled={props.disabled || !text.trim()} onClick={send}>
-        {props.onCancel ? 'Comment' : 'Send'}
-      </button>
+      <div className="chat-input-actions">
+        {props.onCancel && (
+          <button className="icon-btn" onClick={props.onCancel}>Cancel</button>
+        )}
+        <button className="run-btn small" disabled={props.disabled || !text.trim()} onClick={send}>
+          {props.onCancel ? 'Comment' : 'Send'}
+        </button>
+      </div>
     </div>
   );
 }

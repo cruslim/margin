@@ -10,6 +10,7 @@ Milestone 1 (review engine spike) — **done and verified**.
 - [x] M2 — Electron app shell: repo picker, session list, split/unified diff viewer for local refs (`npm run dev`)
 - [x] M3 — Review pipeline wired to UI: streamed agent transcript, findings panel, inline finding cards anchored in the diff
 - [x] M4 — Chat: finding-level threads, general chat tab, propose-fix with `git apply --recount` + confirm
+- [x] Comments — GitHub-style line-anchored AI threads: hover a diff line, click +, comment; works even before a review runs
 - [ ] M5 — Polish: multi-lens finder/verifier pipeline, dismissal memory, per-repo `.margin.md` review config, re-review deltas, markdown export
 
 ## Storage

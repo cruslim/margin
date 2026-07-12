@@ -113,7 +113,24 @@ app.whenReady().then(() => {
   // Smoke-test mode: load a preconfigured session, screenshot the window, quit.
   // (When RUN/COMMENT are set, the capture is triggered by that flow finishing instead.)
   if (process.env.MARGIN_SMOKE && !process.env.MARGIN_SMOKE_RUN && !process.env.MARGIN_SMOKE_COMMENT) {
-    win.webContents.on('did-finish-load', () => captureAndQuit(win, 4500));
+    win.webContents.on('did-finish-load', () => {
+      if (process.env.MARGIN_SMOKE_COMPOSER) {
+        // Open the line-comment composer by clicking a "+" widget, then capture.
+        setTimeout(async () => {
+          const report = await win.webContents.executeJavaScript(`(() => {
+            const widgets = document.querySelectorAll('.diff-add-widget');
+            const target = widgets[3] ?? widgets[0];
+            // The lib opens the composer on mousedown, not click.
+            target?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            return { widgets: widgets.length, clicked: !!target };
+          })()`);
+          console.log('composer smoke:', JSON.stringify(report));
+        }, 4000);
+        captureAndQuit(win, 5500);
+      } else {
+        captureAndQuit(win, 4500);
+      }
+    });
   }
 });
 

@@ -15,6 +15,8 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
     "@git-diff-view/react": "^0.1.6",
+    "dompurify": "^3.4.12",
+    "marked": "^18.0.6",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "simple-git": "^3.27.0"

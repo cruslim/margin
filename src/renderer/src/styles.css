@@ -254,7 +254,16 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .finding-card.sev-low { border-left-color: var(--text-dim); }
 .finding-card.inline { margin: 6px 12px; max-width: 620px; }
 
-.line-extends { display: flex; flex-direction: column; }
+/* Extend lines render inside the diff table — reset the diff viewer's muted
+   text color and monospace font so threads read like the rest of the app. */
+.line-extends {
+  display: flex;
+  flex-direction: column;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+}
+.line-extends .chat-text { color: var(--text); }
+.comment-composer { color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; }
 .comment-composer { padding: 12px 16px; background: var(--bg-panel); border-block: 1px solid var(--border); }
 .comment-composer .chat-input { border-top: none; padding: 0; width: min(100%, 720px); }
 .comment-thread {
@@ -311,6 +320,32 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .chat-msg.assistant { background: var(--bg-raised); border: 1px solid var(--border); max-width: 100%; }
 .thread-msgs .chat-msg.user { align-self: stretch; margin-left: 0; }
 .chat-text { white-space: pre-wrap; word-break: break-word; }
+
+/* Rendered markdown in assistant bubbles */
+.chat-text.md { white-space: normal; display: flex; flex-direction: column; gap: 8px; }
+.chat-text.md p, .chat-text.md ul, .chat-text.md ol { margin: 0; }
+.chat-text.md ul, .chat-text.md ol { padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.chat-text.md code {
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 11.5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.5px 4px;
+}
+.chat-text.md pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  overflow-x: auto;
+}
+.chat-text.md pre code { border: none; background: none; padding: 0; }
+.chat-text.md h1, .chat-text.md h2, .chat-text.md h3, .chat-text.md h4 { font-size: 13px; margin: 4px 0 0; }
+.chat-text.md blockquote { border-left: 2px solid var(--border); padding-left: 10px; color: var(--text-dim); margin: 0; }
+.chat-text.md a { color: var(--accent); }
+.chat-text.md table { border-collapse: collapse; font-size: 12px; }
+.chat-text.md th, .chat-text.md td { border: 1px solid var(--border); padding: 3px 8px; }
 
 .patch-block { display: flex; flex-direction: column; gap: 6px; }
 .patch-block pre {

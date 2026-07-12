@@ -1,5 +1,11 @@
 import { useState } from 'react';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import type { ChatMessage } from '../../../shared/ipc.js';
+
+function renderMarkdown(text: string): string {
+  return DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }));
+}
 
 /** Splits ```diff fences out of a message so patches render with an Apply button. */
 export function splitDiffBlocks(text: string): Array<{ type: 'text' | 'diff'; content: string }> {
@@ -29,6 +35,8 @@ export function ChatBubble(props: { msg: ChatMessage; onApplyPatch: (patch: stri
               Apply patch
             </button>
           </div>
+        ) : msg.role === 'assistant' ? (
+          <div key={i} className="chat-text md" dangerouslySetInnerHTML={{ __html: renderMarkdown(p.content) }} />
         ) : (
           <div key={i} className="chat-text">{p.content}</div>
         ),

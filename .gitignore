@@ -1,0 +1,6 @@
+node_modules/
+dist/
+out/
+.margin/
+*.log
+.DS_Store

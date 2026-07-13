@@ -2,6 +2,61 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import fixPath from 'fix-path';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+
+// Apps launched from Finder get a minimal PATH; the review engine spawns
+// `node` for the SDK CLI, so restore the user's shell PATH first.
+fixPath();
+
+// fix-path needs a resolvable $SHELL; as a deterministic fallback, probe the
+// usual node install locations (nvm, homebrew, volta, n) and prepend the
+// first hit to PATH.
+function ensureNodeOnPath(): void {
+  try {
+    execFileSync('node', ['--version'], { stdio: 'ignore' });
+    return;
+  } catch {
+    // not on PATH — probe below
+  }
+  const home = homedir();
+  const candidates = ['/opt/homebrew/bin', '/usr/local/bin', join(home, '.volta/bin'), join(home, 'n/bin')];
+  try {
+    const versions = readdirSync(join(home, '.nvm/versions/node'))
+      .map((v) => ({ v, parts: v.replace(/^v/, '').split('.').map(Number) }))
+      .sort((a, b) => b.parts[0] - a.parts[0] || b.parts[1] - a.parts[1] || b.parts[2] - a.parts[2]);
+    if (versions[0]) candidates.unshift(join(home, '.nvm/versions/node', versions[0].v, 'bin'));
+  } catch {
+    // no nvm
+  }
+  for (const dir of candidates) {
+    if (existsSync(join(dir, 'node'))) {
+      process.env.PATH = `${dir}:${process.env.PATH ?? ''}`;
+      return;
+    }
+  }
+}
+ensureNodeOnPath();
+
+// The SDK spawns its CLI with child_process.spawn, which Electron does NOT
+// patch for asar — hand it the real unpacked path.
+if (app.isPackaged) {
+  process.env.MARGIN_CLI_PATH = join(
+    process.resourcesPath,
+    'app.asar.unpacked',
+    'node_modules',
+    '@anthropic-ai',
+    'claude-agent-sdk',
+    'cli.js',
+  );
+}
+
+// Keep the dev-era storage location (package.json name "margin") — the
+// packaged app's productName is "Margin", which would otherwise move
+// userData and orphan existing sessions.
+app.setPath('userData', join(app.getPath('appData'), 'margin'));
 import { openRepo, changedFiles, fileDiff, applyPatch } from './gitService.js';
 import { runReview } from '../engine/review.js';
 import { chat } from '../engine/chat.js';

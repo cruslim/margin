@@ -103,6 +103,8 @@ export async function runReview(
       ...(opts.model ? { model: opts.model } : {}),
       // Inside Electron, process.execPath is Electron itself — force plain node for the CLI child.
       ...(process.versions.electron ? { executable: 'node' as const } : {}),
+      // Packaged app: the SDK's own cli.js path resolves inside the asar; use the unpacked copy.
+      ...(process.env.MARGIN_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.MARGIN_CLI_PATH } : {}),
     },
   });
 

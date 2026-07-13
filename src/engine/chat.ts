@@ -45,6 +45,7 @@ export async function chat(
       ...(opts.model ? { model: opts.model } : {}),
       ...(events.onTextDelta ? { includePartialMessages: true } : {}),
       ...(process.versions.electron ? { executable: 'node' as const } : {}),
+      ...(process.env.MARGIN_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.MARGIN_CLI_PATH } : {}),
     },
   });
 

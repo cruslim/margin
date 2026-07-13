@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChatMessage, Finding } from '../../../shared/ipc.js';
-import type { Session } from '../App.js';
+import type { ChatMessage, DismissedFinding, Finding } from '../../../shared/ipc.js';
+import type { ChatScope, Session } from '../App.js';
+import { dismissalKey } from '../App.js';
 import { FindingCard } from './FindingCard.js';
-import { ChatBubble, ChatInput } from './ChatParts.js';
+import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
 
 const SEV_ORDER: Record<Finding['severity'], number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -13,6 +14,12 @@ function fmtTokens(n: number): string {
 export function ReviewPanel(props: {
   session: Session;
   busy: boolean;
+  streamScope?: ChatScope;
+  streamText: string;
+  dismissedKeys: Set<string>;
+  dismissals: DismissedFinding[];
+  onDismiss: (f: Finding) => void;
+  onRestore: (key: string) => void;
   onJumpToFinding: (f: Finding) => void;
   onSendChat: (text: string, findingIndex?: number) => void;
   onProposeFix: (findingIndex: number) => void;
@@ -35,6 +42,7 @@ export function ReviewPanel(props: {
   // Keep original indices — threads are keyed by them.
   const sorted = s.findings
     .map((finding, index) => ({ finding, index }))
+    .filter(({ finding }) => !props.dismissedKeys.has(dismissalKey(finding)))
     .sort((a, b) => SEV_ORDER[a.finding.severity] - SEV_ORDER[b.finding.severity]);
 
   return (
@@ -68,12 +76,21 @@ export function ReviewPanel(props: {
                     finding={finding}
                     thread={s.threads?.[index] ?? []}
                     busy={props.busy}
+                    streaming={
+                      props.streamScope?.type === 'finding' && props.streamScope.index === index
+                        ? props.streamText
+                        : undefined
+                    }
                     onJump={() => props.onJumpToFinding(finding)}
+                    onDismiss={() => props.onDismiss(finding)}
                     onReply={(text) => props.onSendChat(text, index)}
                     onProposeFix={() => props.onProposeFix(index)}
                     onApplyPatch={(patch) => props.onApplyPatch(patch, index)}
                   />
                 ))
+              )}
+              {props.dismissals.length > 0 && (
+                <DismissedSection dismissals={props.dismissals} onRestore={props.onRestore} />
               )}
               <ReviewStats session={s} />
             </>
@@ -85,6 +102,7 @@ export function ReviewPanel(props: {
         <ChatTab
           session={s}
           busy={props.busy}
+          streaming={props.streamScope?.type === 'chat' ? props.streamText : undefined}
           onSend={(text) => props.onSendChat(text)}
           onApplyPatch={(patch) => props.onApplyPatch(patch)}
         />
@@ -111,7 +129,9 @@ function FindingThread(props: {
   finding: Finding;
   thread: ChatMessage[];
   busy: boolean;
+  streaming?: string;
   onJump: () => void;
+  onDismiss: () => void;
   onReply: (text: string) => void;
   onProposeFix: () => void;
   onApplyPatch: (patch: string) => void;
@@ -128,10 +148,18 @@ function FindingThread(props: {
           ))}
         </div>
       )}
+      {props.streaming !== undefined && (
+        <div className="thread-msgs">
+          <StreamingBubble text={props.streaming} />
+        </div>
+      )}
       <div className="thread-actions">
         <button onClick={() => setReplyOpen(!replyOpen)}>Reply</button>
         <button onClick={props.onProposeFix} disabled={props.busy}>Propose fix</button>
-        {props.busy && <span className="busy-dot">thinking…</span>}
+        <button className="dismiss-btn" onClick={props.onDismiss} title="Hide this finding and never report it again">
+          Dismiss
+        </button>
+        {props.busy && props.streaming === undefined && <span className="busy-dot">thinking…</span>}
       </div>
       {replyOpen && (
         <ChatInput
@@ -150,6 +178,7 @@ function FindingThread(props: {
 function ChatTab(props: {
   session: Session;
   busy: boolean;
+  streaming?: string;
   onSend: (text: string) => void;
   onApplyPatch: (patch: string) => void;
 }) {
@@ -159,7 +188,7 @@ function ChatTab(props: {
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages.length, props.busy]);
+  }, [messages.length, props.busy, props.streaming?.length]);
 
   if (!s.sdkSessionId) {
     return (
@@ -180,9 +209,36 @@ function ChatTab(props: {
         {messages.map((m, i) => (
           <ChatBubble key={i} msg={m} onApplyPatch={props.onApplyPatch} />
         ))}
-        {props.busy && <div className="busy-dot">thinking…</div>}
+        {props.streaming !== undefined ? (
+          <StreamingBubble text={props.streaming} />
+        ) : (
+          props.busy && <div className="busy-dot">thinking…</div>
+        )}
       </div>
       <ChatInput disabled={props.busy} placeholder="Ask about this changeset…" onSend={props.onSend} />
+    </div>
+  );
+}
+
+function DismissedSection(props: { dismissals: DismissedFinding[]; onRestore: (key: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="dismissed-section">
+      <button className="dismissed-toggle" onClick={() => setOpen(!open)}>
+        {open ? '▾' : '▸'} Dismissed ({props.dismissals.length})
+      </button>
+      {open &&
+        props.dismissals.map((d) => {
+          const key = dismissalKey(d);
+          return (
+            <div key={key} className="dismissed-item">
+              <span className="dismissed-summary">
+                {d.file}: {d.summary}
+              </span>
+              <button className="finding-loc" onClick={() => props.onRestore(key)}>Restore</button>
+            </div>
+          );
+        })}
     </div>
   );
 }

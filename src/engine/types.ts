@@ -35,6 +35,24 @@ export interface TokenUsage {
   cacheCreationTokens: number;
 }
 
+/** A finding the user dismissed — remembered per repo so re-reviews don't resurface it. */
+export interface DismissedFinding {
+  file: string;
+  category: string;
+  summary: string;
+  snippet?: string;
+  at: number;
+}
+
+export interface ReviewOptions {
+  /** Model override (e.g. 'sonnet', 'opus', 'haiku'); omit for the Claude Code default. */
+  model?: string;
+  /** Review only changes since this commit (delta re-review). */
+  sinceSha?: string;
+  /** Previously dismissed findings — the reviewer is told not to report them again. */
+  dismissed?: DismissedFinding[];
+}
+
 export interface ReviewResult {
   sessionId: string;
   target: ReviewTarget;
@@ -43,6 +61,8 @@ export interface ReviewResult {
   changeSummary: string;
   /** Model that actually ran the review (the user's Claude Code default unless overridden). */
   model: string;
+  /** Commit the reviewed ref pointed at, for delta re-reviews. Null for working-tree reviews. */
+  headSha: string | null;
   usage: TokenUsage | null;
   costUsd: number | null;
   durationMs: number;

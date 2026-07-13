@@ -1,5 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangedFile, ChatMessage, Comment, Finding, RepoInfo, ReviewTarget, Session } from '../../shared/ipc.js';
+import type {
+  ChangedFile,
+  ChatMessage,
+  Comment,
+  DismissedFinding,
+  Finding,
+  RepoInfo,
+  ReviewTarget,
+  Session,
+} from '../../shared/ipc.js';
+
+/** Which thread the in-flight chat turn belongs to, for routing streamed text. */
+export type ChatScope = { type: 'chat' } | { type: 'finding'; index: number } | { type: 'comment'; id: string };
+
+export function dismissalKey(d: Pick<DismissedFinding, 'file' | 'category' | 'summary'>): string {
+  return `${d.file}::${d.category}::${d.summary}`;
+}
 import { Sidebar } from './components/Sidebar.js';
 import { DiffPane } from './components/DiffPane.js';
 import { ReviewPanel } from './components/ReviewPanel.js';
@@ -21,6 +37,9 @@ export function App() {
   const [files, setFiles] = useState<ChangedFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [chatBusy, setChatBusy] = useState<Record<string, boolean>>({});
+  const [streamText, setStreamText] = useState<Record<string, string>>({});
+  const [chatScope, setChatScope] = useState<Record<string, ChatScope>>({});
+  const [dismissals, setDismissals] = useState<Record<string, DismissedFinding[]>>({});
   const loaded = useRef(false);
 
   const active = useMemo(() => sessions.find((s) => s.key === activeKey) ?? null, [sessions, activeKey]);
@@ -56,6 +75,20 @@ export function App() {
       patchSession(sessionKey, (s) => ({ transcript: [...s.transcript, line] }));
     });
   }, [patchSession]);
+
+  useEffect(() => {
+    return window.margin.onChatDelta((sessionKey, delta) => {
+      setStreamText((prev) => ({ ...prev, [sessionKey]: (prev[sessionKey] ?? '') + delta }));
+    });
+  }, []);
+
+  // Load repo-level dismissals for the active session's repo.
+  useEffect(() => {
+    if (!active?.repoPath || dismissals[active.repoPath]) return;
+    window.margin.listDismissals(active.repoPath).then((d) => {
+      setDismissals((prev) => ({ ...prev, [active.repoPath]: d }));
+    });
+  }, [active?.repoPath, dismissals]);
 
   // Load changed files when the active session changes.
   useEffect(() => {
@@ -136,20 +169,32 @@ export function App() {
   }, []);
 
   const runReview = useCallback(
-    async (session: Session) => {
-      patchSession(session.key, { status: 'reviewing', transcript: [], findings: [], error: undefined });
+    async (session: Session, mode: 'full' | 'delta' = 'full') => {
+      const sinceSha =
+        mode === 'delta' && session.lastReviewedSha && session.headRef ? session.lastReviewedSha : undefined;
+      patchSession(session.key, (s) => ({
+        status: 'reviewing',
+        transcript: [],
+        findings: sinceSha ? s.findings : [],
+        error: undefined,
+      }));
       try {
-        const result = await window.margin.runReview(session.key, targetOf(session));
-        patchSession(session.key, {
+        const result = await window.margin.runReview(session.key, targetOf(session), {
+          model: session.modelChoice,
+          sinceSha,
+        });
+        patchSession(session.key, (s) => ({
           status: 'done',
-          findings: result.findings,
+          // Delta reviews append new findings; full reviews replace.
+          findings: sinceSha ? [...s.findings, ...result.findings] : result.findings,
           changeSummary: result.changeSummary,
-          costUsd: result.costUsd,
+          costUsd: sinceSha ? (s.costUsd ?? 0) + (result.costUsd ?? 0) : result.costUsd,
           model: result.model,
           usage: result.usage,
           sdkSessionId: result.sessionId,
           workDir: result.workDir,
-        });
+          lastReviewedSha: result.headSha ?? undefined,
+        }));
         return result;
       } catch (err) {
         patchSession(session.key, { status: 'error', error: String(err) });
@@ -158,6 +203,26 @@ export function App() {
     },
     [patchSession],
   );
+
+  const dismissFinding = useCallback(
+    async (session: Session, finding: Finding) => {
+      const d: DismissedFinding = {
+        file: finding.file,
+        category: finding.category,
+        summary: finding.summary,
+        snippet: finding.snippet,
+        at: Date.now(),
+      };
+      const all = await window.margin.addDismissal(session.repoPath, d);
+      setDismissals((prev) => ({ ...prev, [session.repoPath]: all }));
+    },
+    [],
+  );
+
+  const restoreDismissal = useCallback(async (repoPath: string, key: string) => {
+    const all = await window.margin.removeDismissal(repoPath, key);
+    setDismissals((prev) => ({ ...prev, [repoPath]: all }));
+  }, []);
 
   const appendChatMessage = useCallback(
     (sessionKey: string, msg: ChatMessage, findingIndex?: number) => {
@@ -178,11 +243,14 @@ export function App() {
       displayText: string,
       prompt: string,
       findingIndex?: number,
+      model?: string,
     ) => {
       appendChatMessage(sessionKey, { role: 'user', text: displayText, at: Date.now() }, findingIndex);
       setChatBusy((b) => ({ ...b, [sessionKey]: true }));
+      setChatScope((p) => ({ ...p, [sessionKey]: findingIndex == null ? { type: 'chat' } : { type: 'finding', index: findingIndex } }));
+      setStreamText((p) => ({ ...p, [sessionKey]: '' }));
       try {
-        const reply = await window.margin.sendChat(sessionKey, sdkSessionId, workDir, prompt);
+        const reply = await window.margin.sendChat(sessionKey, sdkSessionId, workDir, prompt, { model });
         appendChatMessage(sessionKey, { role: 'assistant', text: reply.text, at: Date.now() }, findingIndex);
         patchSession(sessionKey, (s) => ({
           sdkSessionId: reply.sessionId,
@@ -192,6 +260,11 @@ export function App() {
         appendChatMessage(sessionKey, { role: 'assistant', text: `Error: ${String(err)}`, at: Date.now() }, findingIndex);
       } finally {
         setChatBusy((b) => ({ ...b, [sessionKey]: false }));
+        setStreamText((p) => ({ ...p, [sessionKey]: '' }));
+        setChatScope((p) => {
+          const { [sessionKey]: _, ...rest } = p;
+          return rest;
+        });
       }
     },
     [appendChatMessage, patchSession],
@@ -205,7 +278,7 @@ export function App() {
         const f = session.findings[findingIndex];
         prompt = `Regarding your review finding "${f.summary}" at ${f.file}:${f.line}:\n\n${text}`;
       }
-      sendChatCore(session.key, session.sdkSessionId, session.workDir, text, prompt, findingIndex);
+      sendChatCore(session.key, session.sdkSessionId, session.workDir, text, prompt, findingIndex, session.modelChoice);
     },
     [sendChatCore, chatBusy],
   );
@@ -218,7 +291,7 @@ export function App() {
         `Propose a minimal fix for your review finding "${f.summary}" at ${f.file}:${f.line}. ` +
         'Reply with a one-paragraph explanation followed by exactly ONE unified diff inside a ```diff code fence, ' +
         'using a/ b/ path prefixes so it applies cleanly with `git apply` from the repo root. No other code blocks.';
-      sendChatCore(session.key, session.sdkSessionId, session.workDir, 'Propose a fix', prompt, findingIndex);
+      sendChatCore(session.key, session.sdkSessionId, session.workDir, 'Propose a fix', prompt, findingIndex, session.modelChoice);
     },
     [sendChatCore, chatBusy],
   );
@@ -265,11 +338,15 @@ export function App() {
   const runCommentTurn = useCallback(
     async (session: Session, commentId: string, prompt: string) => {
       setChatBusy((b) => ({ ...b, [session.key]: true }));
+      setChatScope((p) => ({ ...p, [session.key]: { type: 'comment', id: commentId } }));
+      setStreamText((p) => ({ ...p, [session.key]: '' }));
       try {
         // Comments work before any review ran: lazily prepare a workdir and
         // let chat() start a fresh session when there's nothing to resume.
         const workDir = session.workDir ?? (await window.margin.prepareWorkdir(targetOf(session)));
-        const reply = await window.margin.sendChat(session.key, session.sdkSessionId ?? null, workDir, prompt);
+        const reply = await window.margin.sendChat(session.key, session.sdkSessionId ?? null, workDir, prompt, {
+          model: session.modelChoice,
+        });
         patchSession(session.key, (s) => ({
           sdkSessionId: reply.sessionId,
           workDir,
@@ -280,26 +357,40 @@ export function App() {
         appendToComment(session.key, commentId, { role: 'assistant', text: `Error: ${String(err)}`, at: Date.now() });
       } finally {
         setChatBusy((b) => ({ ...b, [session.key]: false }));
+        setStreamText((p) => ({ ...p, [session.key]: '' }));
+        setChatScope((p) => {
+          const { [session.key]: _, ...rest } = p;
+          return rest;
+        });
       }
     },
     [appendToComment, patchSession],
   );
 
   const addComment = useCallback(
-    (session: Session, file: string, side: 'old' | 'new', line: number, quoted: string, text: string) => {
+    (
+      session: Session,
+      file: string,
+      side: 'old' | 'new',
+      startLine: number,
+      endLine: number,
+      quoted: string,
+      text: string,
+    ) => {
       if (chatBusy[session.key]) return;
       const comment: Comment = {
         id: crypto.randomUUID(),
         file,
         side,
-        startLine: line,
-        endLine: line,
+        startLine,
+        endLine,
         messages: [{ role: 'user', text, at: Date.now() }],
       };
       patchSession(session.key, (s) => ({ comments: [...(s.comments ?? []), comment] }));
+      const lineDesc = startLine === endLine ? `line ${endLine}` : `lines ${startLine}-${endLine}`;
       const prompt =
-        `The user commented on ${file}, line ${line} (${side === 'old' ? 'old/removed side of the diff' : 'new version'}).` +
-        (quoted ? `\nThe line reads:\n\`\`\`\n${quoted}\n\`\`\`` : '') +
+        `The user commented on ${file}, ${lineDesc} (${side === 'old' ? 'old/removed side of the diff' : 'new version'}).` +
+        (quoted ? `\nThe line(s) read:\n\`\`\`\n${quoted}\n\`\`\`` : '') +
         `\nChangeset under review: ${session.baseRef}...${session.headRef ?? 'working tree'}.\n\n${text}`;
       runCommentTurn(session, comment.id, prompt);
     },
@@ -352,21 +443,27 @@ export function App() {
       } else if (smoke.comment) {
         // Exercise the lazy-session path: comment on a line with no review run.
         window.margin.changedFiles(targetOf(session)).then((files) => {
-          if (files[0]) addComment(session, files[0].path, 'new', 20, '', smoke.comment);
+          if (files[0]) addComment(session, files[0].path, 'new', 20, 20, '', smoke.comment);
         });
       }
     });
   }, [runReview, sendChatCore, addComment]);
 
+  // Findings filtered by the repo's dismissal memory (original indices preserved for threads).
+  const activeDismissals = (active && dismissals[active.repoPath]) ?? [];
+  const dismissedKeys = useMemo(() => new Set(activeDismissals.map(dismissalKey)), [activeDismissals]);
   const activeFindings = active?.findings ?? [];
   const fileFindings = useMemo(
-    () => activeFindings.filter((f) => f.file === selectedFile),
-    [activeFindings, selectedFile],
+    () => activeFindings.filter((f) => f.file === selectedFile && !dismissedKeys.has(dismissalKey(f))),
+    [activeFindings, selectedFile, dismissedKeys],
   );
   const fileComments = useMemo(
     () => (active?.comments ?? []).filter((c) => c.file === selectedFile),
     [active?.comments, selectedFile],
   );
+  const activeScope = active ? chatScope[active.key] : undefined;
+  const activeStream = active ? streamText[active.key] ?? '' : '';
+  const deltaAvailable = !!(active?.lastReviewedSha && active.headRef && active.status === 'done');
 
   return (
     <div className="app">
@@ -388,13 +485,42 @@ export function App() {
               <span className="session-name">{sessionTitle(active)}</span>
               <span className="base-ref">vs {active.baseRef}</span>
             </div>
-            <button
-              className="run-btn"
-              disabled={active.status === 'reviewing'}
-              onClick={() => runReview(active)}
-            >
-              {active.status === 'reviewing' ? 'Reviewing…' : active.status === 'done' ? 'Re-review' : 'Run review'}
-            </button>
+            <div className="topbar-actions">
+              <select
+                className="model-select"
+                title="Model for reviews and chat in this session"
+                value={active.modelChoice ?? ''}
+                onChange={(e) => patchSession(active.key, { modelChoice: e.target.value || undefined })}
+              >
+                <option value="">default model</option>
+                <option value="sonnet">sonnet</option>
+                <option value="opus">opus</option>
+                <option value="haiku">haiku</option>
+              </select>
+              {deltaAvailable && (
+                <button
+                  className="icon-btn"
+                  title="Re-review the full diff from scratch"
+                  disabled={active.status === 'reviewing'}
+                  onClick={() => runReview(active, 'full')}
+                >
+                  full re-review
+                </button>
+              )}
+              <button
+                className="run-btn"
+                disabled={active.status === 'reviewing'}
+                onClick={() => runReview(active, deltaAvailable ? 'delta' : 'full')}
+              >
+                {active.status === 'reviewing'
+                  ? 'Reviewing…'
+                  : deltaAvailable
+                    ? 'Review new changes'
+                    : active.status === 'done'
+                      ? 'Re-review'
+                      : 'Run review'}
+              </button>
+            </div>
           </header>
           <div className="workspace">
             <nav className="filelist">
@@ -419,7 +545,11 @@ export function App() {
                   findings={fileFindings}
                   comments={fileComments}
                   busy={!!chatBusy[active.key]}
-                  onAddComment={(file, side, line, quoted, text) => addComment(active, file, side, line, quoted, text)}
+                  streamScope={activeScope}
+                  streamText={activeStream}
+                  onAddComment={(file, side, startLine, endLine, quoted, text) =>
+                    addComment(active, file, side, startLine, endLine, quoted, text)
+                  }
                   onReplyComment={(comment, text) => replyComment(active, comment, text)}
                   onApplyPatch={(patch, commentId) => applyPatchToComment(active, patch, commentId)}
                 />
@@ -430,6 +560,12 @@ export function App() {
             <ReviewPanel
               session={active}
               busy={!!chatBusy[active.key]}
+              streamScope={activeScope}
+              streamText={activeStream}
+              dismissedKeys={dismissedKeys}
+              dismissals={activeDismissals}
+              onDismiss={(f) => dismissFinding(active, f)}
+              onRestore={(key) => restoreDismissal(active.repoPath, key)}
               onJumpToFinding={(f: Finding) => setSelectedFile(f.file)}
               onSendChat={(text, findingIndex) => sendChat(active, text, findingIndex)}
               onProposeFix={(findingIndex) => proposeFix(active, findingIndex)}

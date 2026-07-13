@@ -39,3 +39,7 @@ export async function branchDiff(repoPath: string, baseRef: string, headRef: str
 export async function workingTreeDiff(repoPath: string): Promise<string> {
   return git(repoPath, ['diff', 'HEAD']);
 }
+
+export async function resolveSha(repoPath: string, ref: string): Promise<string> {
+  return (await git(repoPath, ['rev-parse', ref])).trim();
+}

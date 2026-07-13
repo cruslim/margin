@@ -1,4 +1,4 @@
-import type { Finding, ReviewResult, ReviewTarget } from '../engine/types.js';
+import type { DismissedFinding, Finding, ReviewResult, ReviewTarget } from '../engine/types.js';
 
 export interface ChangedFile {
   path: string;
@@ -67,6 +67,10 @@ export interface Session {
   threads?: Record<number, ChatMessage[]>;
   /** User-initiated line-anchored comment threads. */
   comments?: Comment[];
+  /** Model override for review + chat in this session ('sonnet' | 'opus' | 'haiku'); unset = Claude Code default. */
+  modelChoice?: string;
+  /** Commit reviewed last time — enables delta re-reviews. */
+  lastReviewedSha?: string;
 }
 
 export interface PersistedState {
@@ -80,12 +84,27 @@ export interface MarginApi {
   openRepo(path: string): Promise<RepoInfo | null>;
   changedFiles(target: ReviewTarget): Promise<ChangedFile[]>;
   fileDiff(target: ReviewTarget, path: string): Promise<FileDiff>;
-  runReview(sessionKey: string, target: ReviewTarget): Promise<ReviewResult>;
+  runReview(
+    sessionKey: string,
+    target: ReviewTarget,
+    opts?: { model?: string; sinceSha?: string },
+  ): Promise<ReviewResult>;
   onReviewProgress(cb: (sessionKey: string, line: string) => void): () => void;
+  /** Streaming text deltas for the in-flight chat/comment reply of a session. */
+  onChatDelta(cb: (sessionKey: string, delta: string) => void): () => void;
+  listDismissals(repoPath: string): Promise<DismissedFinding[]>;
+  addDismissal(repoPath: string, d: DismissedFinding): Promise<DismissedFinding[]>;
+  removeDismissal(repoPath: string, key: string): Promise<DismissedFinding[]>;
   /** Remove a session's temp worktree when the session is deleted. */
   cleanupWorktree(repoPath: string, workDir: string): Promise<void>;
   /** Send a chat turn. Resumes sdkSessionId, or starts a fresh session in workDir when null. */
-  sendChat(sessionKey: string, sdkSessionId: string | null, workDir: string, message: string): Promise<ChatReply>;
+  sendChat(
+    sessionKey: string,
+    sdkSessionId: string | null,
+    workDir: string,
+    message: string,
+    opts?: { model?: string },
+  ): Promise<ChatReply>;
   /** Ensure a workdir exists for a session (temp worktree for branch reviews) before any review ran. */
   prepareWorkdir(target: ReviewTarget): Promise<string>;
   /** Apply a unified diff to the repo's working copy. Runs `git apply --check` first. */
@@ -98,4 +117,4 @@ export interface MarginApi {
   smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string } | null;
 }
 
-export type { Finding, ReviewResult, ReviewTarget };
+export type { DismissedFinding, Finding, ReviewResult, ReviewTarget };

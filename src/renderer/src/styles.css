@@ -162,6 +162,16 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   padding: 6px 14px;
 }
 .run-btn:disabled { opacity: 0.55; cursor: default; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.model-select {
+  background: var(--bg);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+}
 .run-btn.small { padding: 4px 10px; align-self: flex-start; }
 
 .workspace { flex: 1; display: flex; min-height: 0; }
@@ -316,6 +326,34 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .thread-actions button:hover { text-decoration: underline; }
 .thread-actions button:disabled { color: var(--text-dim); text-decoration: none; cursor: default; }
 .busy-dot { color: var(--text-dim); font-size: 11px; font-style: italic; }
+.dismiss-btn { color: var(--text-dim) !important; }
+.dismiss-btn:hover { color: var(--err) !important; }
+.chat-msg.streaming { border-style: dashed; }
+
+.dismissed-section { display: flex; flex-direction: column; gap: 6px; }
+.dismissed-toggle { color: var(--text-dim); font-size: 11.5px; text-align: left; padding: 4px 0; }
+.dismissed-toggle:hover { color: var(--text); }
+.dismissed-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  padding-left: 12px;
+}
+.dismissed-summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.composer-range { font-size: 11.5px; color: var(--text-dim); margin-bottom: 6px; }
+.composer-range input {
+  width: 64px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 11.5px;
+}
 
 .chat-tab { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .chat-list { gap: 8px; }

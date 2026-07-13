@@ -45,6 +45,19 @@ export function ChatBubble(props: { msg: ChatMessage; onApplyPatch: (patch: stri
   );
 }
 
+/** Live bubble for a reply that's still streaming in. */
+export function StreamingBubble(props: { text: string }) {
+  return (
+    <div className="chat-msg assistant streaming">
+      {props.text ? (
+        <div className="chat-text md" dangerouslySetInnerHTML={{ __html: renderMarkdown(props.text) }} />
+      ) : (
+        <div className="busy-dot">thinking…</div>
+      )}
+    </div>
+  );
+}
+
 export function ChatInput(props: {
   disabled: boolean;
   placeholder: string;

@@ -6,10 +6,18 @@ const api: MarginApi = {
   openRepo: (path) => ipcRenderer.invoke('repo:open', path),
   changedFiles: (target) => ipcRenderer.invoke('diff:files', target),
   fileDiff: (target, path) => ipcRenderer.invoke('diff:file', target, path),
-  runReview: (sessionKey, target) => ipcRenderer.invoke('review:run', sessionKey, target),
+  runReview: (sessionKey, target, opts) => ipcRenderer.invoke('review:run', sessionKey, target, opts),
+  onChatDelta: (cb) => {
+    const listener = (_e: unknown, sessionKey: string, delta: string) => cb(sessionKey, delta);
+    ipcRenderer.on('chat:delta', listener);
+    return () => ipcRenderer.removeListener('chat:delta', listener);
+  },
+  listDismissals: (repoPath) => ipcRenderer.invoke('dismissals:list', repoPath),
+  addDismissal: (repoPath, d) => ipcRenderer.invoke('dismissals:add', repoPath, d),
+  removeDismissal: (repoPath, key) => ipcRenderer.invoke('dismissals:remove', repoPath, key),
   cleanupWorktree: (repoPath, workDir) => ipcRenderer.invoke('worktree:cleanup', repoPath, workDir),
-  sendChat: (sessionKey, sdkSessionId, workDir, message) =>
-    ipcRenderer.invoke('chat:send', sessionKey, sdkSessionId, workDir, message),
+  sendChat: (sessionKey, sdkSessionId, workDir, message, opts) =>
+    ipcRenderer.invoke('chat:send', sessionKey, sdkSessionId, workDir, message, opts),
   applyPatch: (repoPath, patch) => ipcRenderer.invoke('patch:apply', repoPath, patch),
   prepareWorkdir: (target) => ipcRenderer.invoke('workdir:prepare', target),
   loadState: () => ipcRenderer.invoke('storage:load'),

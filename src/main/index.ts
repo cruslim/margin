@@ -8,7 +8,7 @@ import { chat } from '../engine/chat.js';
 import { createWorktree, removeWorktree } from '../engine/worktree.js';
 import * as storage from './storage.js';
 import type { ReviewTarget } from '../engine/types.js';
-import type { RepoInfo, Session } from '../shared/ipc.js';
+import type { DismissedFinding, RepoInfo, Session } from '../shared/ipc.js';
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
 
@@ -70,14 +70,19 @@ app.whenReady().then(() => {
     }, delayMs);
   };
 
-  ipcMain.handle('review:run', async (event, sessionKey: string, target: ReviewTarget) => {
+  ipcMain.handle('review:run', async (event, sessionKey: string, target: ReviewTarget, opts?: { model?: string; sinceSha?: string }) => {
     const sender = event.sender;
+    const dismissed = await storage.listDismissals(target.repoPath);
     try {
-      return await runReview(target, {
-        onProgress: (line) => {
-          if (!sender.isDestroyed()) sender.send('review:progress', sessionKey, line);
+      return await runReview(
+        target,
+        {
+          onProgress: (line) => {
+            if (!sender.isDestroyed()) sender.send('review:progress', sessionKey, line);
+          },
         },
-      });
+        { ...opts, dismissed },
+      );
     } finally {
       // In auto-run smoke mode, capture after the review settles into the UI
       // (unless a smoke chat turn follows — then capture after that instead).
@@ -91,14 +96,29 @@ app.whenReady().then(() => {
     target.headRef ? createWorktree(target.repoPath, target.headRef) : target.repoPath,
   );
 
-  ipcMain.handle('chat:send', async (event, sessionKey: string, sdkSessionId: string | null, workDir: string, message: string) => {
+  let midstreamCaptured = false;
+  ipcMain.handle('chat:send', async (event, sessionKey: string, sdkSessionId: string | null, workDir: string, message: string, opts?: { model?: string }) => {
     const sender = event.sender;
     try {
-      return await chat(sdkSessionId, workDir, message, {
-        onProgress: (line) => {
-          if (!sender.isDestroyed()) sender.send('review:progress', sessionKey, line);
+      return await chat(
+        sdkSessionId,
+        workDir,
+        message,
+        {
+          onProgress: (line) => {
+            if (!sender.isDestroyed()) sender.send('review:progress', sessionKey, line);
+          },
+          onTextDelta: (delta) => {
+            if (!sender.isDestroyed()) sender.send('chat:delta', sessionKey, delta);
+            // Mid-stream smoke: capture while the reply is streaming in.
+            if (process.env.MARGIN_SMOKE_MIDSTREAM && !midstreamCaptured) {
+              midstreamCaptured = true;
+              captureAndQuit(BrowserWindow.fromWebContents(sender)!, 1500);
+            }
+          },
         },
-      });
+        opts ?? {},
+      );
     } finally {
       if (process.env.MARGIN_SMOKE_CHAT || process.env.MARGIN_SMOKE_COMMENT) {
         captureAndQuit(BrowserWindow.fromWebContents(sender)!, 3000);
@@ -107,6 +127,10 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('patch:apply', (_e, repoPath: string, patch: string) => applyPatch(repoPath, patch));
+
+  ipcMain.handle('dismissals:list', (_e, repoPath: string) => storage.listDismissals(repoPath));
+  ipcMain.handle('dismissals:add', (_e, repoPath: string, d: DismissedFinding) => storage.addDismissal(repoPath, d));
+  ipcMain.handle('dismissals:remove', (_e, repoPath: string, key: string) => storage.removeDismissal(repoPath, key));
 
   const win = createWindow();
 

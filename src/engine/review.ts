@@ -1,6 +1,8 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { Finding, ReviewResult, ReviewTarget, TokenUsage } from './types.js';
-import { branchDiff, createWorktree, workingTreeDiff } from './worktree.js';
+import type { Finding, ReviewOptions, ReviewResult, ReviewTarget, TokenUsage } from './types.js';
+import { branchDiff, createWorktree, resolveSha, workingTreeDiff } from './worktree.js';
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];
 
@@ -12,8 +14,22 @@ Rules:
 - Every finding must name a concrete failure scenario: what input or state triggers it and what goes wrong.
 - Findings must anchor to a line in the NEW version of a changed file, and include the exact source snippet at that line.`;
 
-function reviewPrompt(diff: string): string {
-  return `Review the following diff. Explore the repository (Read/Grep/Glob) as needed to verify each suspicion before reporting it.
+function reviewPrompt(diff: string, opts: ReviewOptions, projectInstructions: string): string {
+  let preamble = '';
+  if (opts.sinceSha) {
+    preamble +=
+      'This is an INCREMENTAL review: the diff below contains only changes made since your previous review of this branch. Review just these new changes.\n\n';
+  }
+  if (projectInstructions.trim()) {
+    preamble += `Project-specific review instructions (from .margin.md — follow these):\n${projectInstructions.trim()}\n\n`;
+  }
+  if (opts.dismissed?.length) {
+    preamble +=
+      'The user has dismissed the following findings — do NOT report these or trivial variations of them again:\n' +
+      opts.dismissed.map((d) => `- ${d.file} [${d.category}]: ${d.summary}`).join('\n') +
+      '\n\n';
+  }
+  return `${preamble}Review the following diff. Explore the repository (Read/Grep/Glob) as needed to verify each suspicion before reporting it.
 
 When you are done, output ONLY a JSON object (no prose before or after, no code fence) with this shape:
 {
@@ -43,13 +59,19 @@ export interface ReviewEvents {
   onProgress?: (line: string) => void;
 }
 
-export async function runReview(target: ReviewTarget, events: ReviewEvents = {}): Promise<ReviewResult> {
+export async function runReview(
+  target: ReviewTarget,
+  events: ReviewEvents = {},
+  opts: ReviewOptions = {},
+): Promise<ReviewResult> {
   const started = Date.now();
 
   let diff: string;
   let workDir: string;
+  let headSha: string | null = null;
   if (target.headRef) {
-    diff = await branchDiff(target.repoPath, target.baseRef, target.headRef);
+    headSha = await resolveSha(target.repoPath, target.headRef);
+    diff = await branchDiff(target.repoPath, opts.sinceSha ?? target.baseRef, target.headRef);
     workDir = await createWorktree(target.repoPath, target.headRef);
   } else {
     diff = await workingTreeDiff(target.repoPath);
@@ -57,8 +79,12 @@ export async function runReview(target: ReviewTarget, events: ReviewEvents = {})
     workDir = target.repoPath;
   }
   if (!diff.trim()) {
-    throw new Error('Diff is empty — nothing to review.');
+    throw new Error(
+      opts.sinceSha ? 'No new changes since the last review.' : 'Diff is empty — nothing to review.',
+    );
   }
+
+  const projectInstructions = await readFile(join(workDir, '.margin.md'), 'utf8').catch(() => '');
 
   let sessionId = '';
   let resultText = '';
@@ -67,13 +93,14 @@ export async function runReview(target: ReviewTarget, events: ReviewEvents = {})
   let usage: TokenUsage | null = null;
 
   const stream = query({
-    prompt: reviewPrompt(diff),
+    prompt: reviewPrompt(diff, opts, projectInstructions),
     options: {
       cwd: workDir,
       systemPrompt: SYSTEM_PROMPT,
       allowedTools: READ_ONLY_TOOLS,
       disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'],
       maxTurns: 60,
+      ...(opts.model ? { model: opts.model } : {}),
       // Inside Electron, process.execPath is Electron itself — force plain node for the CLI child.
       ...(process.versions.electron ? { executable: 'node' as const } : {}),
     },
@@ -114,6 +141,7 @@ export async function runReview(target: ReviewTarget, events: ReviewEvents = {})
     findings: parsed.findings,
     changeSummary: parsed.changeSummary,
     model,
+    headSha,
     usage,
     costUsd,
     durationMs: Date.now() - started,
@@ -130,18 +158,31 @@ function summarizeInput(input: unknown): string {
 }
 
 function parseReviewOutput(text: string): { changeSummary: string; findings: Finding[] } {
-  // The agent is told to emit bare JSON, but tolerate a stray code fence or leading prose.
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1) {
-    throw new Error(`Review output contained no JSON object:\n${text}`);
+  // The agent is told to emit bare JSON, but its message may contain stray
+  // braces in surrounding prose (e.g. inline "{type: 'percent'}" examples).
+  // Try candidate {...} spans until one parses to the expected shape.
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') starts.push(i);
+    else if (text[i] === '}') ends.push(i);
   }
-  const parsed = JSON.parse(text.slice(start, end + 1)) as {
-    changeSummary?: string;
-    findings?: Finding[];
-  };
-  return {
-    changeSummary: parsed.changeSummary ?? '',
-    findings: parsed.findings ?? [],
-  };
+  for (const start of starts) {
+    for (let e = ends.length - 1; e >= 0; e--) {
+      const end = ends[e];
+      if (end <= start) break;
+      try {
+        const parsed = JSON.parse(text.slice(start, end + 1)) as {
+          changeSummary?: string;
+          findings?: Finding[];
+        };
+        if (parsed.changeSummary !== undefined || Array.isArray(parsed.findings)) {
+          return { changeSummary: parsed.changeSummary ?? '', findings: parsed.findings ?? [] };
+        }
+      } catch {
+        // keep scanning
+      }
+    }
+  }
+  throw new Error(`Review output contained no parseable review JSON:\n${text}`);
 }

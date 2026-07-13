@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type { PersistedState, RepoInfo, Session } from '../shared/ipc.js';
+import type { DismissedFinding, PersistedState, RepoInfo, Session } from '../shared/ipc.js';
 import { openRepo } from './gitService.js';
 
 /**
@@ -62,6 +62,32 @@ export async function deleteSession(session: Session): Promise<void> {
   const branchDir = join(reviewsRoot(), repoSlug(session.repoPath), branchSlug(session.headRef));
   const left = await readdir(branchDir).catch(() => null);
   if (left && left.length === 0) await rm(branchDir, { recursive: true, force: true });
+}
+
+function dismissalsFile(repoPath: string): string {
+  return join(reviewsRoot(), repoSlug(repoPath), 'dismissals.json');
+}
+
+export function dismissalKey(d: Pick<DismissedFinding, 'file' | 'category' | 'summary'>): string {
+  return `${d.file}::${d.category}::${d.summary}`;
+}
+
+export async function listDismissals(repoPath: string): Promise<DismissedFinding[]> {
+  return (await readJson<DismissedFinding[]>(dismissalsFile(repoPath))) ?? [];
+}
+
+export async function addDismissal(repoPath: string, d: DismissedFinding): Promise<DismissedFinding[]> {
+  const all = await listDismissals(repoPath);
+  if (!all.some((x) => dismissalKey(x) === dismissalKey(d))) all.push(d);
+  await mkdir(join(reviewsRoot(), repoSlug(repoPath)), { recursive: true });
+  await writeFile(dismissalsFile(repoPath), JSON.stringify(all, null, 2));
+  return all;
+}
+
+export async function removeDismissal(repoPath: string, key: string): Promise<DismissedFinding[]> {
+  const all = (await listDismissals(repoPath)).filter((x) => dismissalKey(x) !== key);
+  await writeFile(dismissalsFile(repoPath), JSON.stringify(all, null, 2)).catch(() => {});
+  return all;
 }
 
 export async function removeRepoData(repoPath: string): Promise<void> {

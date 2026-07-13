@@ -8,6 +8,12 @@ export interface ChatReply {
 
 export interface ChatEvents {
   onProgress?: (line: string) => void;
+  /** Streaming text deltas of the assistant's reply, as they're generated. */
+  onTextDelta?: (delta: string) => void;
+}
+
+export interface ChatOptions {
+  model?: string;
 }
 
 const FRESH_SESSION_PROMPT = `You are Margin, a code review assistant. You are answering questions about a changeset inside a checkout of the repository. Explore with Read/Grep/Glob to ground your answers in the actual code. Be concise and concrete.`;
@@ -22,6 +28,7 @@ export async function chat(
   workDir: string,
   message: string,
   events: ChatEvents = {},
+  opts: ChatOptions = {},
 ): Promise<ChatReply> {
   let newSessionId = sessionId ?? '';
   let text = '';
@@ -35,6 +42,8 @@ export async function chat(
       allowedTools: ['Read', 'Grep', 'Glob'],
       disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'],
       maxTurns: 30,
+      ...(opts.model ? { model: opts.model } : {}),
+      ...(events.onTextDelta ? { includePartialMessages: true } : {}),
       ...(process.versions.electron ? { executable: 'node' as const } : {}),
     },
   });
@@ -42,6 +51,11 @@ export async function chat(
   for await (const msg of stream) {
     if (msg.type === 'system' && msg.subtype === 'init') {
       newSessionId = msg.session_id;
+    } else if (msg.type === 'stream_event') {
+      const e = msg.event;
+      if (e.type === 'content_block_delta' && e.delta.type === 'text_delta' && !msg.parent_tool_use_id) {
+        events.onTextDelta?.(e.delta.text);
+      }
     } else if (msg.type === 'assistant') {
       for (const block of msg.message.content) {
         if (block.type === 'tool_use') {

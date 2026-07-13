@@ -10,8 +10,13 @@ Milestone 1 (review engine spike) — **done and verified**.
 - [x] M2 — Electron app shell: repo picker, session list, split/unified diff viewer for local refs (`npm run dev`)
 - [x] M3 — Review pipeline wired to UI: streamed agent transcript, findings panel, inline finding cards anchored in the diff
 - [x] M4 — Chat: finding-level threads, general chat tab, propose-fix with `git apply --recount` + confirm
-- [x] Comments — GitHub-style line-anchored AI threads: hover a diff line, click +, comment; works even before a review runs
-- [ ] M5 — Polish: multi-lens finder/verifier pipeline, dismissal memory, per-repo `.margin.md` review config, re-review deltas, markdown export
+- [x] Comments — GitHub-style line-anchored AI threads: hover a diff line, click +, comment (with from-line range control); works even before a review runs
+- [x] Streaming replies — chat/comment answers render live as they generate
+- [x] Model picker — per-session default/sonnet/opus/haiku for reviews and chat
+- [x] Delta re-reviews — "Review new changes" covers only commits since the last review
+- [x] Dismissal memory — dismissed findings hidden and never re-reported (per-repo `dismissals.json`, restorable)
+- [x] `.margin.md` — per-repo review instructions injected into every review
+- [ ] M5 remainder: multi-lens finder/verifier pipeline, markdown export, packaging (`electron-builder`)
 
 ## Storage
 

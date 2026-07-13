@@ -48,6 +48,7 @@ export async function chat(
     },
   });
 
+  try {
   for await (const msg of stream) {
     if (msg.type === 'system' && msg.subtype === 'init') {
       newSessionId = msg.session_id;
@@ -71,6 +72,10 @@ export async function chat(
         throw new Error(`Chat turn failed: ${msg.subtype}`);
       }
     }
+  }
+  } catch (err) {
+    // Don't discard a delivered reply over a post-result CLI shutdown error.
+    if (!text) throw err;
   }
 
   return { sessionId: newSessionId, text, costUsd };

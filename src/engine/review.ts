@@ -106,6 +106,7 @@ export async function runReview(
     },
   });
 
+  try {
   for await (const message of stream) {
     if (message.type === 'system' && message.subtype === 'init') {
       sessionId = message.session_id;
@@ -132,6 +133,11 @@ export async function runReview(
         throw new Error(`Review session ended without a result: ${message.subtype}`);
       }
     }
+  }
+  } catch (err) {
+    // Some models' CLI sessions exit non-zero after already delivering the
+    // result — don't discard a completed review over a shutdown error.
+    if (!resultText) throw err;
   }
 
   const parsed = parseReviewOutput(resultText);

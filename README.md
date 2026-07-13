@@ -16,7 +16,10 @@ Milestone 1 (review engine spike) — **done and verified**.
 - [x] Delta re-reviews — "Review new changes" covers only commits since the last review
 - [x] Dismissal memory — dismissed findings hidden and never re-reported (per-repo `dismissals.json`, restorable)
 - [x] `.margin.md` — per-repo review instructions injected into every review
-- [ ] M5 remainder: multi-lens finder/verifier pipeline, markdown export, packaging (`electron-builder`)
+- [x] v0.1 packaged (`npm run install-app` → Margin.app)
+- [x] Multi-model finders — OpenAI-compatible endpoint (GPT/Ollama/OpenRouter) + CodeRabbit CLI run in parallel with the Claude reviewer; findings source-tagged; per-reviewer Agent-log filter
+- [x] Verifier pass — an agentic session cross-examines every finding against the code; verified/refuted/uncertain verdicts with reasons
+- [ ] Later: markdown export, per-finder findings streaming, multiple saved providers
 
 ## Storage
 

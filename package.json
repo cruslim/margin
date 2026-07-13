@@ -9,8 +9,12 @@
   "build": {
     "appId": "com.cruslim.margin",
     "productName": "Margin",
-    "files": ["out/**"],
-    "asarUnpack": ["node_modules/@anthropic-ai/claude-agent-sdk/**"],
+    "files": [
+      "out/**"
+    ],
+    "asarUnpack": [
+      "node_modules/@anthropic-ai/claude-agent-sdk/**"
+    ],
     "mac": {
       "target": "dir",
       "identity": null,
@@ -23,7 +27,8 @@
     "package": "electron-vite build && electron-builder --mac",
     "review": "tsx scripts/review.ts",
     "chat": "tsx scripts/chat.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "install-app": "electron-vite build && electron-builder --mac && ditto dist/mac-arm64/Margin.app \"$HOME/Applications/Margin.app\" && rm -rf dist"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",

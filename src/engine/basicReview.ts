@@ -104,27 +104,56 @@ ${diff}
 FULL CONTENTS OF CHANGED FILES (new versions):
 ${fileSections.join('\n\n')}`;
 
+    type Msg = { role: string; content: string };
+    const request = async (messages: Msg[], jsonMode: boolean): Promise<string> => {
+      const res = await fetch(`${provider.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(provider.apiKey ? { authorization: `Bearer ${provider.apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages,
+          ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.text()).slice(0, 300);
+        // Some OpenAI-compatible servers reject response_format — retry without.
+        if (jsonMode && res.status === 400) return request(messages, false);
+        throw new Error(`${tag}: HTTP ${res.status} ${body}`);
+      }
+      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      return data.choices?.[0]?.message?.content ?? '';
+    };
+
+    const messages: Msg[] = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: user },
+    ];
     onProgress?.(`[${tag}] requesting review`);
-    const res = await fetch(`${provider.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(provider.apiKey ? { authorization: `Bearer ${provider.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: provider.model,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: user },
+    const content = await request(messages, true);
+    let parsed;
+    try {
+      parsed = parseReviewOutput(content);
+    } catch {
+      // Small models sometimes answer in prose despite JSON mode — one corrective retry.
+      onProgress?.(`[${tag}] reply was not JSON, retrying once`);
+      const retry = await request(
+        [
+          ...messages,
+          { role: 'assistant', content },
+          {
+            role: 'user',
+            content:
+              'Your previous reply was not the required JSON. Reply with ONLY the JSON object in the exact shape described earlier — no prose, no code fences.',
+          },
         ],
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`${tag}: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+        true,
+      );
+      parsed = parseReviewOutput(retry);
     }
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = data.choices?.[0]?.message?.content ?? '';
-    const parsed = parseReviewOutput(content);
     onProgress?.(`[${tag}] ${parsed.findings.length} finding(s)`);
     return { findings: parsed.findings.map((f) => ({ ...f, source: tag })), model: tag };
   } finally {

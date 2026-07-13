@@ -19,6 +19,7 @@ export function Sidebar(props: {
   onSelectSession: (key: string) => void;
   onDeleteSession: (key: string) => void;
   onRemoveRepo: (path: string) => void;
+  onOpenSettings: () => void;
 }) {
   const [formRepo, setFormRepo] = useState<string | null>(null);
 
@@ -26,7 +27,10 @@ export function Sidebar(props: {
     <aside className="sidebar">
       <div className="sidebar-header">
         <span className="logo">Margin</span>
-        <button className="icon-btn" title="Add repository" onClick={props.onAddRepo}>+</button>
+        <span className="row-actions">
+          <button className="icon-btn" title="Settings" onClick={props.onOpenSettings}>⚙</button>
+          <button className="icon-btn" title="Add repository" onClick={props.onAddRepo}>+</button>
+        </span>
       </div>
       <div className="sidebar-body">
         {props.repos.map((repo) => (

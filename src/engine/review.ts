@@ -165,7 +165,7 @@ function summarizeInput(input: unknown): string {
   return '';
 }
 
-function parseReviewOutput(text: string): { changeSummary: string; findings: Finding[] } {
+export function parseReviewOutput(text: string): { changeSummary: string; findings: Finding[] } {
   // The agent is told to emit bare JSON, but its message may contain stray
   // braces in surrounding prose (e.g. inline "{type: 'percent'}" examples).
   // Try candidate {...} spans until one parses to the expected shape.

@@ -2,7 +2,8 @@ import { app } from 'electron';
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type { DismissedFinding, PersistedState, RepoInfo, Session } from '../shared/ipc.js';
+import type { AppSettings, DismissedFinding, PersistedState, RepoInfo, Session } from '../shared/ipc.js';
+import { DEFAULT_SETTINGS } from '../shared/ipc.js';
 import { openRepo } from './gitService.js';
 
 /**
@@ -40,6 +41,23 @@ async function readJson<T>(path: string): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+function settingsFile(): string {
+  return join(app.getPath('userData'), 'settings.json');
+}
+
+export async function loadSettings(): Promise<AppSettings> {
+  const stored = await readJson<Partial<AppSettings>>(settingsFile());
+  return {
+    openai: { ...DEFAULT_SETTINGS.openai, ...stored?.openai },
+    coderabbit: { ...DEFAULT_SETTINGS.coderabbit, ...stored?.coderabbit },
+  };
+}
+
+export async function saveSettings(settings: AppSettings): Promise<void> {
+  await mkdir(app.getPath('userData'), { recursive: true });
+  await writeFile(settingsFile(), JSON.stringify(settings, null, 2));
 }
 
 export async function saveRepo(repo: RepoInfo): Promise<void> {

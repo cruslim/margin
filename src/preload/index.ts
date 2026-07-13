@@ -20,6 +20,8 @@ const api: MarginApi = {
     ipcRenderer.invoke('chat:send', sessionKey, sdkSessionId, workDir, message, opts),
   applyPatch: (repoPath, patch) => ipcRenderer.invoke('patch:apply', repoPath, patch),
   prepareWorkdir: (target) => ipcRenderer.invoke('workdir:prepare', target),
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   loadState: () => ipcRenderer.invoke('storage:load'),
   saveRepo: (repo) => ipcRenderer.invoke('storage:saveRepo', repo),
   saveSessions: (sessions) => ipcRenderer.invoke('storage:saveSessions', sessions),

@@ -19,6 +19,7 @@ export function FindingCard(props: {
       {collapsible && <span className="chevron">{props.collapsed ? '▸' : '▾'}</span>}
       <span className={`sev-pill sev-${f.severity}`}>{f.severity}</span>
       <span className="finding-cat">{f.category}</span>
+      {f.source && <span className="source-chip" title={`Found by ${f.source}`}>{f.source}</span>}
       {props.collapsed && <span className="finding-preview">{f.summary}</span>}
       {props.onJump ? (
         <button

@@ -82,6 +82,26 @@ export interface PersistedState {
   sessions: Session[];
 }
 
+/** Global app settings (userData/settings.json). */
+export interface AppSettings {
+  /** Second finder: any OpenAI-compatible endpoint (OpenAI, Ollama, OpenRouter). */
+  openai: {
+    enabled: boolean;
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  };
+  /** Third finder: CodeRabbit CLI. Sends the diff to CodeRabbit's cloud. */
+  coderabbit: {
+    enabled: boolean;
+  };
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  openai: { enabled: false, baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' },
+  coderabbit: { enabled: false },
+};
+
 /** API exposed to the renderer via the preload bridge. */
 export interface MarginApi {
   pickRepo(): Promise<RepoInfo | null>;
@@ -113,6 +133,8 @@ export interface MarginApi {
   prepareWorkdir(target: ReviewTarget): Promise<string>;
   /** Apply a unified diff to the repo's working copy. Runs `git apply --check` first. */
   applyPatch(repoPath: string, patch: string): Promise<{ ok: boolean; error?: string }>;
+  getSettings(): Promise<AppSettings>;
+  saveSettings(settings: AppSettings): Promise<void>;
   loadState(): Promise<PersistedState>;
   saveRepo(repo: RepoInfo): Promise<void>;
   saveSessions(sessions: Session[]): Promise<void>;

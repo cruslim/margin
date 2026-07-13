@@ -43,3 +43,9 @@ export async function workingTreeDiff(repoPath: string): Promise<string> {
 export async function resolveSha(repoPath: string, ref: string): Promise<string> {
   return (await git(repoPath, ['rev-parse', ref])).trim();
 }
+
+/** Paths changed between base and head (or working tree vs HEAD when head is null). */
+export async function changedPaths(repoPath: string, baseRef: string, headRef: string | null): Promise<string[]> {
+  const args = headRef ? ['diff', '--name-only', `${baseRef}...${headRef}`] : ['diff', '--name-only', 'HEAD'];
+  return (await git(repoPath, args)).split('\n').filter(Boolean);
+}

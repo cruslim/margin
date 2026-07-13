@@ -17,6 +17,7 @@ export function dismissalKey(d: Pick<DismissedFinding, 'file' | 'category' | 'su
   return `${d.file}::${d.category}::${d.summary}`;
 }
 import { Sidebar } from './components/Sidebar.js';
+import { SettingsModal } from './components/SettingsModal.js';
 import { DiffPane } from './components/DiffPane.js';
 import { ReviewPanel } from './components/ReviewPanel.js';
 
@@ -40,6 +41,7 @@ export function App() {
   const [streamText, setStreamText] = useState<Record<string, string>>({});
   const [chatScope, setChatScope] = useState<Record<string, ChatScope>>({});
   const [dismissals, setDismissals] = useState<Record<string, DismissedFinding[]>>({});
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const loaded = useRef(false);
 
   const active = useMemo(() => sessions.find((s) => s.key === activeKey) ?? null, [sessions, activeKey]);
@@ -511,7 +513,12 @@ export function App() {
         onSelectSession={setActiveKey}
         onDeleteSession={deleteSession}
         onRemoveRepo={removeRepo}
+        onOpenSettings={() => {
+          console.log('[margin] settings opened via gear click');
+          setSettingsOpen(true);
+        }}
       />
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {active ? (
         <main className="main">
           <header className="topbar">

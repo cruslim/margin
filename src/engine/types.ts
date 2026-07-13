@@ -18,6 +18,8 @@ export interface Finding {
   failureScenario: string;
   /** Exact code snippet the finding anchors to, for re-anchoring in the diff viewer. */
   snippet: string;
+  /** Which reviewer produced this finding (e.g. 'gpt-5', 'coderabbit'); unset = Claude agentic reviewer. */
+  source?: string;
 }
 
 export interface ReviewTarget {

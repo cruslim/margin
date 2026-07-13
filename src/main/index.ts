@@ -40,6 +40,15 @@ function ensureNodeOnPath(): void {
 }
 ensureNodeOnPath();
 
+// The CodeRabbit CLI installs to ~/.local/bin, which Finder-launched apps
+// won't have on PATH either.
+{
+  const localBin = join(homedir(), '.local/bin');
+  if (existsSync(localBin) && !(process.env.PATH ?? '').includes(localBin)) {
+    process.env.PATH = `${process.env.PATH ?? ''}:${localBin}`;
+  }
+}
+
 // The SDK spawns its CLI with child_process.spawn, which Electron does NOT
 // patch for asar — hand it the real unpacked path.
 if (app.isPackaged) {
@@ -60,6 +69,10 @@ app.setPath('userData', join(app.getPath('appData'), 'margin'));
 import { openRepo, changedFiles, fileDiff, applyPatch } from './gitService.js';
 import { runReview } from '../engine/review.js';
 import { chat } from '../engine/chat.js';
+import { runBasicReview } from '../engine/basicReview.js';
+import { runCodeRabbitReview } from '../engine/coderabbit.js';
+import type { Finding } from '../engine/types.js';
+import type { AppSettings } from '../shared/ipc.js';
 import { createWorktree, removeWorktree } from '../engine/worktree.js';
 import * as storage from './storage.js';
 import type { ReviewTarget } from '../engine/types.js';
@@ -103,6 +116,8 @@ app.whenReady().then(() => {
   ipcMain.handle('diff:files', (_e, target: ReviewTarget) => changedFiles(target));
   ipcMain.handle('diff:file', (_e, target: ReviewTarget, path: string) => fileDiff(target, path));
 
+  ipcMain.handle('settings:get', () => storage.loadSettings());
+  ipcMain.handle('settings:save', (_e, settings: AppSettings) => storage.saveSettings(settings));
   ipcMain.handle('storage:load', () => storage.loadState());
   ipcMain.handle('storage:saveRepo', (_e, repo: RepoInfo) => storage.saveRepo(repo));
   ipcMain.handle('storage:saveSessions', (_e, sessions: Session[]) => storage.saveSessions(sessions));
@@ -128,16 +143,36 @@ app.whenReady().then(() => {
   ipcMain.handle('review:run', async (event, sessionKey: string, target: ReviewTarget, opts?: { model?: string; sinceSha?: string }) => {
     const sender = event.sender;
     const dismissed = await storage.listDismissals(target.repoPath);
+    const settings = await storage.loadSettings();
+    const progress = (line: string) => {
+      if (!sender.isDestroyed()) sender.send('review:progress', sessionKey, line);
+    };
     try {
-      return await runReview(
-        target,
-        {
-          onProgress: (line) => {
-            if (!sender.isDestroyed()) sender.send('review:progress', sessionKey, line);
-          },
-        },
-        { ...opts, dismissed },
-      );
+      // Extra finders run in parallel with the agentic review; each is
+      // best-effort — a failed finder becomes a transcript line, not a
+      // failed review.
+      const extraFinders: Array<Promise<{ findings: Finding[] }>> = [];
+      const finderNames: string[] = [];
+      if (settings.openai.enabled && settings.openai.model) {
+        finderNames.push(settings.openai.model);
+        extraFinders.push(runBasicReview(target, settings.openai, { ...opts, dismissed }, progress));
+      }
+      if (settings.coderabbit.enabled) {
+        finderNames.push('coderabbit');
+        extraFinders.push(runCodeRabbitReview(target, progress));
+      }
+
+      const [main, extras] = await Promise.all([
+        runReview(target, { onProgress: progress }, { ...opts, dismissed }),
+        Promise.allSettled(extraFinders),
+      ]);
+
+      const extraFindings: Finding[] = [];
+      extras.forEach((r, i) => {
+        if (r.status === 'fulfilled') extraFindings.push(...r.value.findings);
+        else progress(`[${finderNames[i]}] failed: ${String(r.reason).slice(0, 200)}`);
+      });
+      return { ...main, findings: [...main.findings, ...extraFindings] };
     } finally {
       // In auto-run smoke mode, capture after the review settles into the UI
       // (unless a smoke chat turn follows — then capture after that instead).

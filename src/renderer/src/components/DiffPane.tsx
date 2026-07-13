@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { DiffView, DiffModeEnum, SplitSide } from '@git-diff-view/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { DiffViewWithMultiSelect, DiffModeEnum, SplitSide } from '@git-diff-view/react';
+import type { DiffViewWithMultiSelectRef } from '@git-diff-view/react';
 import type { Comment, FileDiff, Finding, ReviewTarget } from '../../../shared/ipc.js';
 import type { ChatScope } from '../App.js';
 import { FindingCard } from './FindingCard.js';
@@ -31,12 +32,20 @@ export function DiffPane(props: {
 }) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<DiffModeEnum>(DiffModeEnum.Split);
+  const [mode, setMode] = useState<DiffModeEnum>(DiffModeEnum.SplitGitHub);
+  const [pendingRange, setPendingRange] = useState<{ side: 'old' | 'new'; start: number; end: number } | null>(null);
+  const msRef = useRef<DiffViewWithMultiSelectRef>(null);
+
+  const clearRange = () => {
+    setPendingRange(null);
+    msRef.current?.clearSelection();
+  };
 
   useEffect(() => {
     let cancelled = false;
     setDiff(null);
     setError(null);
+    setPendingRange(null);
     window.margin
       .fileDiff(props.target, props.path)
       .then((d) => !cancelled && setDiff(d))
@@ -75,13 +84,48 @@ export function DiffPane(props: {
         <span className="diff-path">{diff.path}</span>
         <button
           className="icon-btn"
-          onClick={() => setMode(mode === DiffModeEnum.Split ? DiffModeEnum.Unified : DiffModeEnum.Split)}
+          onClick={() => setMode(mode === DiffModeEnum.SplitGitHub ? DiffModeEnum.Unified : DiffModeEnum.SplitGitHub)}
         >
-          {mode === DiffModeEnum.Split ? 'unified' : 'split'}
+          {mode === DiffModeEnum.SplitGitHub ? 'unified' : 'split'}
         </button>
       </div>
+      {pendingRange && (
+        <div className="range-composer">
+          <div className="composer-range">
+            Comment on lines {pendingRange.start}–{pendingRange.end}
+            {pendingRange.side === 'old' ? ' (old side)' : ''}
+          </div>
+          <ChatInput
+            disabled={props.busy}
+            placeholder="Comment on the selected lines — starts an AI thread…"
+            autoFocus
+            onCancel={clearRange}
+            onSend={(text) => {
+              props.onAddComment(
+                props.path,
+                pendingRange.side,
+                pendingRange.start,
+                pendingRange.end,
+                quotedLines(pendingRange.side === 'old' ? SplitSide.old : SplitSide.new, pendingRange.start, pendingRange.end),
+                text,
+              );
+              clearRange();
+            }}
+          />
+        </div>
+      )}
       <div className="diff-scroll">
-        <DiffView<LineExtend>
+        <DiffViewWithMultiSelect<LineExtend>
+          ref={msRef}
+          onMultiSelectComplete={(result) => {
+            if (result.range.startLineNumber !== result.range.endLineNumber) {
+              setPendingRange({
+                side: result.range.side,
+                start: result.range.startLineNumber,
+                end: result.range.endLineNumber,
+              });
+            }
+          }}
           data={{
             oldFile: { fileName: diff.path, content: diff.oldContent, fileLang: diff.lang },
             newFile: { fileName: diff.path, content: diff.newContent, fileLang: diff.lang },
@@ -90,27 +134,35 @@ export function DiffPane(props: {
           diffViewMode={mode}
           diffViewTheme="dark"
           diffViewHighlight
-          diffViewWrap={false}
+          // Wrap mode is required for drag-select: the lib only emits the
+          // data-side attributes the MultiSelectManager needs when wrapping.
+          diffViewWrap
           diffViewFontSize={12.5}
           diffViewAddWidget
-          renderWidgetLine={({ side, lineNumber, onClose }) => (
-            <CommentComposer
-              busy={props.busy}
-              endLine={lineNumber}
-              onCancel={onClose}
-              onSend={(startLine, text) => {
-                props.onAddComment(
-                  props.path,
-                  side === SplitSide.old ? 'old' : 'new',
-                  startLine,
-                  lineNumber,
-                  quotedLines(side, startLine, lineNumber),
-                  text,
-                );
-                onClose();
-              }}
-            />
-          )}
+          enableMultiSelect
+          renderWidgetLine={({ side, lineNumber, fromLineNumber, onClose }) => {
+            const from = Math.min(fromLineNumber || lineNumber, lineNumber);
+            const to = Math.max(fromLineNumber || lineNumber, lineNumber);
+            return (
+              <CommentComposer
+                busy={props.busy}
+                startLine={from}
+                endLine={to}
+                onCancel={onClose}
+                onSend={(startLine, text) => {
+                  props.onAddComment(
+                    props.path,
+                    side === SplitSide.old ? 'old' : 'new',
+                    startLine,
+                    to,
+                    quotedLines(side, startLine, to),
+                    text,
+                  );
+                  onClose();
+                }}
+              />
+            );
+          }}
           extendData={extendData}
           renderExtendLine={({ data }) =>
             data ? (
@@ -141,11 +193,12 @@ export function DiffPane(props: {
 
 function CommentComposer(props: {
   busy: boolean;
+  startLine: number;
   endLine: number;
   onCancel: () => void;
   onSend: (startLine: number, text: string) => void;
 }) {
-  const [startLine, setStartLine] = useState(props.endLine);
+  const [startLine, setStartLine] = useState(props.startLine);
 
   return (
     <div className="comment-composer">

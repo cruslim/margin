@@ -141,16 +141,46 @@ app.whenReady().then(() => {
       if (process.env.MARGIN_SMOKE_COMPOSER) {
         // Open the line-comment composer by clicking a "+" widget, then capture.
         setTimeout(async () => {
-          const report = await win.webContents.executeJavaScript(`(() => {
-            const widgets = document.querySelectorAll('.diff-add-widget');
-            const target = widgets[3] ?? widgets[0];
-            // The lib opens the composer on mousedown, not click.
-            target?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-            return { widgets: widgets.length, clicked: !!target };
+          const report = await win.webContents.executeJavaScript(`(async () => {
+            // Select the source file (first file may be a one-line config diff).
+            const fileBtn = [...document.querySelectorAll('.file-item')].find((b) => b.textContent.includes('cart.js'));
+            fileBtn?.click();
+            await new Promise((r) => setTimeout(r, 1200));
+            const spans = [...document.querySelectorAll('span[data-line-num]')];
+            const debug = spans.slice(0, 30).map((el) => el.getAttribute('data-line-num') + '@' + el.closest('td')?.className.split(' ')[0] + '/' + el.closest('td')?.getAttribute('data-side'));
+            const byLine = (n) =>
+              spans.find(
+                (el) =>
+                  el.getAttribute('data-line-num') === String(n) &&
+                  (el.closest('td')?.getAttribute('data-side') === 'new' || el.closest('td')?.className.includes('new-num')),
+              );
+            const start = byLine(15);
+            const end = byLine(20);
+            const fire = (el, type) => {
+              const r = el.getBoundingClientRect();
+              el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: r.x + 4, clientY: r.y + 4, buttons: 1 }));
+            };
+            let selecting = false;
+            if (start && end) {
+              // Simulate a gutter drag from line 15 to 20 — composer bar opens on mouseup.
+              fire(start, 'mousedown');
+              selecting = !!document.querySelector('.diff-multi-selecting');
+              fire(end, 'mouseover');
+              fire(end, 'mouseup');
+              await new Promise((r) => setTimeout(r, 300));
+            }
+            return {
+              spans: spans.length,
+              debug: debug.length,
+              selecting,
+              dragged: !!(start && end),
+              selected: document.querySelectorAll('.diff-multi-select-active').length,
+              composer: !!document.querySelector('.range-composer'),
+            };
           })()`);
           console.log('composer smoke:', JSON.stringify(report));
         }, 4000);
-        captureAndQuit(win, 5500);
+        captureAndQuit(win, 6000);
       } else {
         captureAndQuit(win, 4500);
       }

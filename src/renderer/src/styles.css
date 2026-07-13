@@ -148,7 +148,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   background: var(--bg-panel);
   -webkit-app-region: drag;
 }
-.topbar button { -webkit-app-region: no-drag; }
+.topbar button, .topbar select { -webkit-app-region: no-drag; }
 .topbar-title { display: flex; align-items: baseline; gap: 8px; }
 .repo-name { color: var(--text-dim); }
 .session-name { font-weight: 600; }

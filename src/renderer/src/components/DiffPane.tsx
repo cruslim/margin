@@ -55,6 +55,35 @@ export function DiffPane(props: {
     };
   }, [props.target.repoPath, props.target.baseRef, props.target.headRef, props.path]);
 
+  // Keep the drag-selected rows visibly lit while the range composer is open
+  // (the lib clears its own selection highlight on mouseup).
+  useEffect(() => {
+    if (!pendingRange) return;
+    const sideClass = pendingRange.side === 'old' ? 'diff-line-old-num' : 'diff-line-new-num';
+    const lit = new Set<Element>();
+    // The diff lib rebuilds its table asynchronously after a re-render, so the
+    // rows may not exist yet when this effect fires — apply now and retry
+    // shortly after to cover the rebuild window.
+    const apply = () => {
+      document.querySelectorAll(`td.${sideClass} span[data-line-num]`).forEach((span) => {
+        const n = Number(span.getAttribute('data-line-num'));
+        if (n >= pendingRange.start && n <= pendingRange.end) {
+          const tr = span.closest('tr');
+          if (tr) {
+            tr.classList.add('margin-range-lit');
+            lit.add(tr);
+          }
+        }
+      });
+    };
+    apply();
+    const timers = [setTimeout(apply, 80), setTimeout(apply, 300)];
+    return () => {
+      timers.forEach(clearTimeout);
+      lit.forEach((el) => el.classList.remove('margin-range-lit'));
+    };
+  }, [pendingRange]);
+
   // Inline extends: findings anchor to the new side; comments to either side.
   const extendData = useMemo(() => {
     const oldFile: Record<number, { data: LineExtend }> = {};

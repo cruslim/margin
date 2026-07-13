@@ -134,6 +134,12 @@ app.whenReady().then(() => {
 
   const win = createWindow();
 
+  if (process.env.MARGIN_SMOKE) {
+    win.webContents.on('console-message', (_e, _level, message) => {
+      if (message.includes('[margin]')) console.log('renderer:', message);
+    });
+  }
+
   // Smoke-test mode: load a preconfigured session, screenshot the window, quit.
   // (When RUN/COMMENT are set, the capture is triggered by that flow finishing instead.)
   if (process.env.MARGIN_SMOKE && !process.env.MARGIN_SMOKE_RUN && !process.env.MARGIN_SMOKE_COMMENT) {
@@ -167,14 +173,20 @@ app.whenReady().then(() => {
               selecting = !!document.querySelector('.diff-multi-selecting');
               fire(end, 'mouseover');
               fire(end, 'mouseup');
-              await new Promise((r) => setTimeout(r, 300));
+              await new Promise((r) => setTimeout(r, 50));
             }
+            const at50 = document.querySelectorAll('.diff-multi-select-active').length;
+            const lit50 = document.querySelectorAll('tr.margin-range-lit').length;
+            const qNew = document.querySelectorAll('td.diff-line-new-num span[data-line-num]').length;
+            await new Promise((r) => setTimeout(r, 700));
             return {
               spans: spans.length,
-              debug: debug.length,
               selecting,
-              dragged: !!(start && end),
-              selected: document.querySelectorAll('.diff-multi-select-active').length,
+              at50,
+              lit50,
+              qNew,
+              at750: document.querySelectorAll('.diff-multi-select-active').length,
+              lit750: document.querySelectorAll('tr.margin-range-lit').length,
               composer: !!document.querySelector('.range-composer'),
             };
           })()`);

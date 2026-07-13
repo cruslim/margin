@@ -346,6 +346,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 /* Drag-selected diff lines (DiffViewWithMultiSelect) */
 .diff-multi-select-active { background: rgba(122, 162, 247, 0.16) !important; }
 .diff-multi-selecting { cursor: ns-resize; }
+tr.margin-range-lit td { background: rgba(122, 162, 247, 0.3) !important; }
+tr.margin-range-lit td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+/* Hint that the line-number gutter is drag-selectable */
+td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
 
 /* Composer bar that appears when a line range is drag-selected */
 .range-composer {

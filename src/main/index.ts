@@ -130,7 +130,8 @@ app.whenReady().then(() => {
     await removeWorktree(repoPath, workDir);
   });
 
-  const captureAndQuit = async (win: BrowserWindow, delayMs: number) => {
+  const captureAndQuit = async (win: BrowserWindow, delayMs: number, reason = 'unknown') => {
+    console.log(`capture scheduled (+${delayMs}ms) from: ${reason}`);
     setTimeout(async () => {
       const image = await win.webContents.capturePage();
       const out = process.env.MARGIN_SMOKE_OUT ?? '/tmp/margin-smoke.png';
@@ -183,7 +184,7 @@ app.whenReady().then(() => {
             win.webContents.executeJavaScript(`document.querySelector('.finding-head.toggleable')?.click()`).catch(() => {});
           }, 1500);
         }
-        captureAndQuit(win, 3000);
+        captureAndQuit(win, 3000, 'review:run finally');
       }
     }
   });
@@ -209,7 +210,7 @@ app.whenReady().then(() => {
             // Mid-stream smoke: capture while the reply is streaming in.
             if (process.env.MARGIN_SMOKE_MIDSTREAM && !midstreamCaptured) {
               midstreamCaptured = true;
-              captureAndQuit(BrowserWindow.fromWebContents(sender)!, 1500);
+              captureAndQuit(BrowserWindow.fromWebContents(sender)!, 1500, 'midstream');
             }
           },
         },
@@ -225,7 +226,7 @@ app.whenReady().then(() => {
             ).catch(() => {});
           }, 1500);
         }
-        captureAndQuit(win, 3000);
+        captureAndQuit(win, 3000, 'chat:send finally');
       }
     }
   });
@@ -296,9 +297,9 @@ app.whenReady().then(() => {
             console.log('composer smoke error:', String(err));
           }
         }, 4000);
-        captureAndQuit(win, 9000);
+        captureAndQuit(win, 9000, 'did-finish-load composer');
       } else {
-        captureAndQuit(win, 4500);
+        captureAndQuit(win, 4500, 'did-finish-load plain');
       }
     });
   }

@@ -30,6 +30,15 @@ Plain JSON files, human-readable, all local — no database:
       session-<key>.json       # findings, summary, model, token usage, cost, transcript
 ```
 
+## Install / run
+
+```sh
+npm run package        # builds dist/mac-arm64/Margin.app (unsigned, local use)
+ditto dist/mac-arm64/Margin.app ~/Applications/Margin.app
+```
+
+Or for development: `npm run dev`.
+
 ## Try the engine
 
 ```sh

@@ -491,7 +491,10 @@ export function App() {
   const dismissedKeys = useMemo(() => new Set(activeDismissals.map(dismissalKey)), [activeDismissals]);
   const activeFindings = active?.findings ?? [];
   const fileFindings = useMemo(
-    () => activeFindings.filter((f) => f.file === selectedFile && !dismissedKeys.has(dismissalKey(f))),
+    () =>
+      activeFindings.filter(
+        (f) => f.file === selectedFile && !dismissedKeys.has(dismissalKey(f)) && f.verdict !== 'refuted',
+      ),
     [activeFindings, selectedFile, dismissedKeys],
   );
   const fileComments = useMemo(

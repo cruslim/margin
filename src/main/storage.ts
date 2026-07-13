@@ -52,6 +52,7 @@ export async function loadSettings(): Promise<AppSettings> {
   return {
     openai: { ...DEFAULT_SETTINGS.openai, ...stored?.openai },
     coderabbit: { ...DEFAULT_SETTINGS.coderabbit, ...stored?.coderabbit },
+    verifier: { ...DEFAULT_SETTINGS.verifier, ...stored?.verifier },
   };
 }
 

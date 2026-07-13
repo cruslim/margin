@@ -59,8 +59,9 @@ export function ReviewPanel(props: {
   // Keep original indices — threads are keyed by them.
   const sorted = s.findings
     .map((finding, index) => ({ finding, index }))
-    .filter(({ finding }) => !props.dismissedKeys.has(dismissalKey(finding)))
+    .filter(({ finding }) => !props.dismissedKeys.has(dismissalKey(finding)) && finding.verdict !== 'refuted')
     .sort((a, b) => SEV_ORDER[a.finding.severity] - SEV_ORDER[b.finding.severity]);
+  const refuted = s.findings.filter((f) => f.verdict === 'refuted');
 
   return (
     <aside className="review-panel">
@@ -108,6 +109,7 @@ export function ReviewPanel(props: {
                   />
                 ))
               )}
+              {refuted.length > 0 && <RefutedSection refuted={refuted} />}
               {props.dismissals.length > 0 && (
                 <DismissedSection dismissals={props.dismissals} onRestore={props.onRestore} />
               )}
@@ -267,6 +269,28 @@ function ChatTab(props: {
         )}
       </div>
       <ChatInput disabled={props.busy} placeholder="Ask about this changeset…" onSend={props.onSend} />
+    </div>
+  );
+}
+
+function RefutedSection(props: { refuted: Finding[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="dismissed-section">
+      <button className="dismissed-toggle" onClick={() => setOpen(!open)}>
+        {open ? '▾' : '▸'} Refuted by verifier ({props.refuted.length})
+      </button>
+      {open &&
+        props.refuted.map((f, i) => (
+          <div key={i} className="refuted-item">
+            <div className="dismissed-item">
+              <span className="dismissed-summary">
+                {f.source ? `[${f.source}] ` : ''}{f.file}:{f.line} — {f.summary}
+              </span>
+            </div>
+            {f.verdictReason && <div className="refuted-reason">{f.verdictReason}</div>}
+          </div>
+        ))}
     </div>
   );
 }

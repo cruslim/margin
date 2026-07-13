@@ -75,6 +75,28 @@ export function SettingsModal(props: { onClose: () => void }) {
           </label>
         </section>
 
+        <section className="settings-section">
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={s.verifier.enabled}
+              onChange={(e) => setSettings({ ...s, verifier: { ...s.verifier, enabled: e.target.checked } })}
+            />
+            Verifier pass <span className="settings-hint">(an agentic Claude session cross-examines every finding against the code; refuted findings are set aside)</span>
+          </label>
+          <div className="settings-fields">
+            <label>
+              Verifier model <span className="settings-hint">(empty = same as the session; a strong model here pays off)</span>
+              <input
+                type="text"
+                value={s.verifier.model}
+                placeholder="e.g. opus or claude-fable-5"
+                onChange={(e) => setSettings({ ...s, verifier: { ...s.verifier, model: e.target.value } })}
+              />
+            </label>
+          </div>
+        </section>
+
         <div className="modal-actions">
           <button className="icon-btn" onClick={props.onClose}>Cancel</button>
           <button className="run-btn small" onClick={save}>Save</button>

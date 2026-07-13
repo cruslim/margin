@@ -95,11 +95,18 @@ export interface AppSettings {
   coderabbit: {
     enabled: boolean;
   };
+  /** Agentic verification pass: cross-examines every finding against the codebase. */
+  verifier: {
+    enabled: boolean;
+    /** Model for the verifier session; '' = the session's model choice. */
+    model: string;
+  };
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   openai: { enabled: false, baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' },
   coderabbit: { enabled: false },
+  verifier: { enabled: false, model: '' },
 };
 
 /** API exposed to the renderer via the preload bridge. */

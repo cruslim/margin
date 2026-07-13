@@ -343,6 +343,18 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .sev-pill.sev-medium { background: var(--warn); color: #10101a; }
 .sev-pill.sev-low { background: var(--text-dim); color: #10101a; }
 .finding-cat { color: var(--text-dim); }
+.verdict-chip {
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.verdict-chip.confirmed { background: rgba(158, 206, 106, 0.15); color: var(--ok); border: 1px solid rgba(158, 206, 106, 0.4); }
+.verdict-chip.uncertain { background: var(--bg); color: var(--text-dim); border: 1px solid var(--border); }
+.refuted-item { display: flex; flex-direction: column; gap: 2px; }
+.refuted-reason { color: var(--text-dim); font-size: 11px; padding-left: 24px; font-style: italic; }
+
 .source-chip {
   background: var(--bg);
   border: 1px solid var(--border);

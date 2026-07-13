@@ -20,6 +20,9 @@ export interface Finding {
   snippet: string;
   /** Which reviewer produced this finding (e.g. 'gpt-5', 'coderabbit'); unset = Claude agentic reviewer. */
   source?: string;
+  /** Verifier's adjudication, when the verifier pass ran. */
+  verdict?: 'confirmed' | 'refuted' | 'uncertain';
+  verdictReason?: string;
 }
 
 export interface ReviewTarget {

@@ -71,6 +71,7 @@ import { runReview } from '../engine/review.js';
 import { chat } from '../engine/chat.js';
 import { runBasicReview } from '../engine/basicReview.js';
 import { runCodeRabbitReview } from '../engine/coderabbit.js';
+import { verifyFindings } from '../engine/verify.js';
 import type { Finding } from '../engine/types.js';
 import type { AppSettings } from '../shared/ipc.js';
 import { createWorktree, removeWorktree } from '../engine/worktree.js';
@@ -173,7 +174,25 @@ app.whenReady().then(() => {
         if (r.status === 'fulfilled') extraFindings.push(...r.value.findings);
         else progress(`[${finderNames[i]}] failed: ${String(r.reason).slice(0, 200)}`);
       });
-      return { ...main, findings: [...main.findings, ...extraFindings] };
+      let findings = [...main.findings, ...extraFindings];
+      let costUsd = main.costUsd;
+
+      if (settings.verifier.enabled && findings.length > 0) {
+        progress(`[verifier] cross-examining ${findings.length} finding(s)`);
+        try {
+          const verified = await verifyFindings(
+            target,
+            findings,
+            { model: settings.verifier.model || opts?.model },
+            progress,
+          );
+          findings = verified.findings;
+          costUsd = (costUsd ?? 0) + (verified.costUsd ?? 0);
+        } catch (err) {
+          progress(`[verifier] failed: ${String(err).slice(0, 200)} — findings left unverified`);
+        }
+      }
+      return { ...main, findings, costUsd };
     } finally {
       // In auto-run smoke mode, capture after the review settles into the UI
       // (unless a smoke chat turn follows — then capture after that instead).
@@ -188,6 +207,13 @@ app.whenReady().then(() => {
               }, 300);
             `).catch(() => {});
           }, 1200);
+        }
+        if (process.env.MARGIN_SMOKE_CLICK) {
+          setTimeout(() => {
+            win.webContents.executeJavaScript(`
+              [...document.querySelectorAll('button')].find((b) => b.textContent.includes('${process.env.MARGIN_SMOKE_CLICK}'))?.click();
+            `).catch(() => {});
+          }, 1500);
         }
         if (process.env.MARGIN_SMOKE_COLLAPSE) {
           setTimeout(() => {

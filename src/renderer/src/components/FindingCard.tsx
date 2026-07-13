@@ -20,6 +20,12 @@ export function FindingCard(props: {
       <span className={`sev-pill sev-${f.severity}`}>{f.severity}</span>
       <span className="finding-cat">{f.category}</span>
       {f.source && <span className="source-chip" title={`Found by ${f.source}`}>{f.source}</span>}
+      {f.verdict === 'confirmed' && (
+        <span className="verdict-chip confirmed" title={f.verdictReason || 'Verified against the code'}>✓ verified</span>
+      )}
+      {f.verdict === 'uncertain' && (
+        <span className="verdict-chip uncertain" title={f.verdictReason || 'Verifier could not determine'}>? unverified</span>
+      )}
       {props.collapsed && <span className="finding-preview">{f.summary}</span>}
       {props.onJump ? (
         <button

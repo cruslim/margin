@@ -179,6 +179,16 @@ app.whenReady().then(() => {
       // (unless a smoke chat turn follows — then capture after that instead).
       if (process.env.MARGIN_SMOKE_RUN && !process.env.MARGIN_SMOKE_CHAT) {
         const win = BrowserWindow.fromWebContents(sender)!;
+        if (process.env.MARGIN_SMOKE_LOGTAB) {
+          setTimeout(() => {
+            win.webContents.executeJavaScript(`
+              [...document.querySelectorAll('.panel-tabs button')].find((b) => b.textContent === 'Agent log')?.click();
+              setTimeout(() => {
+                [...document.querySelectorAll('.log-pill')].find((b) => b.textContent.includes('${process.env.MARGIN_SMOKE_LOGTAB}'))?.click();
+              }, 300);
+            `).catch(() => {});
+          }, 1200);
+        }
         if (process.env.MARGIN_SMOKE_COLLAPSE) {
           setTimeout(() => {
             win.webContents.executeJavaScript(`document.querySelector('.finding-head.toggleable')?.click()`).catch(() => {});

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, DismissedFinding, Finding } from '../../../shared/ipc.js';
 import type { ChatScope, Session } from '../App.js';
 import { dismissalKey } from '../App.js';
@@ -29,7 +29,22 @@ export function ReviewPanel(props: {
 }) {
   const s = props.session;
   const [tab, setTab] = useState<'findings' | 'chat' | 'transcript'>('findings');
+  const [logFilter, setLogFilter] = useState<string>('all');
   const transcriptRef = useRef<HTMLDivElement>(null);
+
+  // Transcript lines from extra finders are prefixed "[tag] …"; Claude's own
+  // lines are unprefixed or "[tool] …".
+  const sourceOf = (line: string): string => {
+    const m = line.match(/^\[([^\]]+)\]/);
+    return !m || m[1] === 'tool' ? 'claude' : m[1];
+  };
+  const logSources = useMemo(() => {
+    const seen = new Set<string>(['claude']);
+    for (const line of s.transcript) seen.add(sourceOf(line));
+    return [...seen];
+  }, [s.transcript]);
+  const visibleLog =
+    logFilter === 'all' ? s.transcript : s.transcript.filter((l) => sourceOf(l) === logFilter);
 
   // Follow the transcript while a review is running.
   useEffect(() => {
@@ -113,17 +128,34 @@ export function ReviewPanel(props: {
       )}
 
       {tab === 'transcript' && (
-        <div className="panel-body transcript" ref={transcriptRef}>
-          {s.transcript.length === 0 ? (
-            <div className="empty-note">Nothing yet.</div>
-          ) : (
-            s.transcript.map((line, i) => (
-              <div key={i} className={`t-line ${line.startsWith('[tool]') ? 't-tool' : ''}`}>
-                {line}
-              </div>
-            ))
+        <>
+          {logSources.length > 1 && (
+            <div className="log-pills">
+              {['all', ...logSources].map((src) => (
+                <button
+                  key={src}
+                  className={`log-pill ${logFilter === src ? 'active' : ''}`}
+                  onClick={() => setLogFilter(src)}
+                >
+                  {src}
+                </button>
+              ))}
+            </div>
           )}
-        </div>
+          <div className="panel-body transcript" ref={transcriptRef}>
+            {visibleLog.length === 0 ? (
+              <div className="empty-note">Nothing yet.</div>
+            ) : (
+              visibleLog.map((line, i) => (
+                <div key={i} className={`t-line ${line.startsWith('[tool]') ? 't-tool' : ''}`}>
+                  {logFilter !== 'all' && logFilter !== 'claude'
+                    ? line.replace(/^\[[^\]]+\]\s*/, '')
+                    : line}
+                </div>
+              ))
+            )}
+          </div>
+        </>
       )}
     </aside>
   );

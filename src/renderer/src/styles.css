@@ -488,6 +488,26 @@ td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
 .chat-input-actions { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
 .chat-input-actions .icon-btn { font-size: 12px; }
 
+.log-pills {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+  flex-wrap: wrap;
+}
+.log-pill {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.log-pill:hover { color: var(--text); }
+.log-pill.active { background: var(--accent); color: #10101a; border-color: var(--accent); font-weight: 600; }
+
 .transcript { font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px; gap: 4px; user-select: text; }
 .t-line { line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 .t-tool { color: var(--accent); }

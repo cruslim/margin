@@ -397,6 +397,25 @@ export function App() {
     [chatBusy, patchSession, runCommentTurn],
   );
 
+  const toggleCollapseComment = useCallback(
+    (session: Session, commentId: string) => {
+      patchSession(session.key, (s) => ({
+        comments: (s.comments ?? []).map((c) => (c.id === commentId ? { ...c, collapsed: !c.collapsed } : c)),
+      }));
+    },
+    [patchSession],
+  );
+
+  const deleteComment = useCallback(
+    (session: Session, commentId: string) => {
+      if (!window.confirm('Delete this comment thread?')) return;
+      patchSession(session.key, (s) => ({
+        comments: (s.comments ?? []).filter((c) => c.id !== commentId),
+      }));
+    },
+    [patchSession],
+  );
+
   const replyComment = useCallback(
     (session: Session, comment: Comment, text: string) => {
       if (chatBusy[session.key]) return;
@@ -443,7 +462,12 @@ export function App() {
       } else if (smoke.comment) {
         // Exercise the lazy-session path: comment on a line with no review run.
         window.margin.changedFiles(targetOf(session)).then((files) => {
-          if (files[0]) addComment(session, files[0].path, 'new', 20, 20, '', smoke.comment);
+          const file = files.find((f) => f.path.endsWith('.js')) ?? files[0];
+          if (file) {
+            // Late re-select: the session's own file-load effect races this and would win with files[0].
+            setTimeout(() => setSelectedFile(file.path), 600);
+            addComment(session, file.path, 'new', 20, 20, '', smoke.comment);
+          }
         });
       }
     });
@@ -552,6 +576,8 @@ export function App() {
                     addComment(active, file, side, startLine, endLine, quoted, text)
                   }
                   onReplyComment={(comment, text) => replyComment(active, comment, text)}
+                  onToggleCollapse={(comment) => toggleCollapseComment(active, comment.id)}
+                  onDeleteComment={(comment) => deleteComment(active, comment.id)}
                   onApplyPatch={(patch, commentId) => applyPatchToComment(active, patch, commentId)}
                 />
               ) : (

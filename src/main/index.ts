@@ -121,7 +121,15 @@ app.whenReady().then(() => {
       );
     } finally {
       if (process.env.MARGIN_SMOKE_CHAT || process.env.MARGIN_SMOKE_COMMENT) {
-        captureAndQuit(BrowserWindow.fromWebContents(sender)!, 3000);
+        const win = BrowserWindow.fromWebContents(sender)!;
+        if (process.env.MARGIN_SMOKE_COLLAPSE) {
+          setTimeout(() => {
+            win.webContents.executeJavaScript(
+              `document.querySelector('.comment-head')?.click()`,
+            ).catch(() => {});
+          }, 1500);
+        }
+        captureAndQuit(win, 3000);
       }
     }
   });

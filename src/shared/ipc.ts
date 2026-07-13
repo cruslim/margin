@@ -42,6 +42,8 @@ export interface Comment {
   startLine: number;
   endLine: number;
   messages: ChatMessage[];
+  /** Collapsed to just the header row in the diff. */
+  collapsed?: boolean;
 }
 
 export interface Session {

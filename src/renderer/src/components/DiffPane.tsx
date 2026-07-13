@@ -28,6 +28,8 @@ export function DiffPane(props: {
     text: string,
   ) => void;
   onReplyComment: (comment: Comment, text: string) => void;
+  onToggleCollapse: (comment: Comment) => void;
+  onDeleteComment: (comment: Comment) => void;
   onApplyPatch: (patch: string, commentId: string) => void;
 }) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
@@ -227,6 +229,8 @@ export function DiffPane(props: {
                         : undefined
                     }
                     onReply={(text) => props.onReplyComment(c, text)}
+                    onToggleCollapse={() => props.onToggleCollapse(c)}
+                    onDelete={() => props.onDeleteComment(c)}
                     onApplyPatch={(patch) => props.onApplyPatch(patch, c.id)}
                   />
                 ))}
@@ -280,6 +284,8 @@ function CommentThread(props: {
   busy: boolean;
   streaming?: string;
   onReply: (text: string) => void;
+  onToggleCollapse: () => void;
+  onDelete: () => void;
   onApplyPatch: (patch: string) => void;
 }) {
   const [replyOpen, setReplyOpen] = useState(false);
@@ -287,19 +293,45 @@ function CommentThread(props: {
     props.busy &&
     props.streaming === undefined &&
     props.comment.messages[props.comment.messages.length - 1]?.role === 'user';
+  const collapsed = !!props.comment.collapsed;
+
+  const head = (
+    <div className="comment-head" onClick={props.onToggleCollapse} title={collapsed ? 'Expand' : 'Collapse'}>
+      <span className="comment-chevron">{collapsed ? '▸' : '▾'}</span>
+      <span className="comment-title">Comment</span>
+      {collapsed && (
+        <span className="comment-preview">
+          {props.comment.messages[0]?.text.slice(0, 80)}
+          {props.comment.messages.length > 1 ? ` · ${props.comment.messages.length} messages` : ''}
+        </span>
+      )}
+      <span className="comment-loc">
+        {props.comment.file}:
+        {props.comment.startLine !== props.comment.endLine
+          ? `${props.comment.startLine}–${props.comment.endLine}`
+          : props.comment.endLine}
+        {props.comment.side === 'old' ? ' (old)' : ''}
+      </span>
+      <button
+        className="icon-btn comment-delete"
+        title="Delete comment thread"
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onDelete();
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+
+  if (collapsed) {
+    return <div className="comment-thread collapsed">{head}</div>;
+  }
 
   return (
     <div className="comment-thread">
-      <div className="comment-head">
-        <span className="comment-title">Comment</span>
-        <span className="comment-loc">
-          {props.comment.file}:
-          {props.comment.startLine !== props.comment.endLine
-            ? `${props.comment.startLine}–${props.comment.endLine}`
-            : props.comment.endLine}
-          {props.comment.side === 'old' ? ' (old)' : ''}
-        </span>
-      </div>
+      {head}
       {props.comment.messages.map((m, i) => (
         <ChatBubble key={i} msg={m} onApplyPatch={props.onApplyPatch} />
       ))}

@@ -3,6 +3,7 @@ import { DiffViewWithMultiSelect, DiffModeEnum, SplitSide } from '@git-diff-view
 import type { DiffViewWithMultiSelectRef } from '@git-diff-view/react';
 import type { Comment, FileDiff, Finding, ReviewTarget } from '../../../shared/ipc.js';
 import type { ChatScope } from '../App.js';
+import { dismissalKey } from '../App.js';
 import { FindingCard } from './FindingCard.js';
 import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
 
@@ -30,6 +31,8 @@ export function DiffPane(props: {
   onReplyComment: (comment: Comment, text: string) => void;
   onToggleCollapse: (comment: Comment) => void;
   onDeleteComment: (comment: Comment) => void;
+  collapsedFindings: Record<string, boolean>;
+  onToggleFinding: (f: Finding) => void;
   onApplyPatch: (patch: string, commentId: string) => void;
 }) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
@@ -217,7 +220,14 @@ export function DiffPane(props: {
           renderExtendLine={({ data }) =>
             data ? (
               <div className="line-extends">
-                {data.finding && <FindingCard finding={data.finding} inline />}
+                {data.finding && (
+                  <FindingCard
+                    finding={data.finding}
+                    inline
+                    collapsed={!!props.collapsedFindings[dismissalKey(data.finding)]}
+                    onToggleCollapse={() => props.onToggleFinding(data.finding!)}
+                  />
+                )}
                 {data.comments.map((c) => (
                   <CommentThread
                     key={c.id}

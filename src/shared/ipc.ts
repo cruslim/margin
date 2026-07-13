@@ -69,6 +69,8 @@ export interface Session {
   threads?: Record<number, ChatMessage[]>;
   /** User-initiated line-anchored comment threads. */
   comments?: Comment[];
+  /** Collapsed findings, keyed by file::category::summary. */
+  collapsedFindings?: Record<string, boolean>;
   /** Model override for review + chat in this session ('sonnet' | 'opus' | 'haiku'); unset = Claude Code default. */
   modelChoice?: string;
   /** Commit reviewed last time — enables delta re-reviews. */
@@ -116,7 +118,7 @@ export interface MarginApi {
   saveSessions(sessions: Session[]): Promise<void>;
   deleteSession(session: Session): Promise<void>;
   removeRepoData(repoPath: string): Promise<void>;
-  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string } | null;
+  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string; model: string } | null;
 }
 
 export type { DismissedFinding, Finding, ReviewResult, ReviewTarget };

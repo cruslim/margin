@@ -18,6 +18,8 @@ export function ReviewPanel(props: {
   streamText: string;
   dismissedKeys: Set<string>;
   dismissals: DismissedFinding[];
+  collapsedFindings: Record<string, boolean>;
+  onToggleFinding: (f: Finding) => void;
   onDismiss: (f: Finding) => void;
   onRestore: (key: string) => void;
   onJumpToFinding: (f: Finding) => void;
@@ -76,6 +78,8 @@ export function ReviewPanel(props: {
                     finding={finding}
                     thread={s.threads?.[index] ?? []}
                     busy={props.busy}
+                    collapsed={!!props.collapsedFindings[dismissalKey(finding)]}
+                    onToggleCollapse={() => props.onToggleFinding(finding)}
                     streaming={
                       props.streamScope?.type === 'finding' && props.streamScope.index === index
                         ? props.streamText
@@ -130,6 +134,8 @@ function FindingThread(props: {
   thread: ChatMessage[];
   busy: boolean;
   streaming?: string;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onJump: () => void;
   onDismiss: () => void;
   onReply: (text: string) => void;
@@ -138,9 +144,22 @@ function FindingThread(props: {
 }) {
   const [replyOpen, setReplyOpen] = useState(false);
 
+  if (props.collapsed) {
+    return (
+      <div className="finding-thread">
+        <FindingCard
+          finding={props.finding}
+          onJump={props.onJump}
+          collapsed
+          onToggleCollapse={props.onToggleCollapse}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="finding-thread">
-      <FindingCard finding={props.finding} onJump={props.onJump} />
+      <FindingCard finding={props.finding} onJump={props.onJump} onToggleCollapse={props.onToggleCollapse} />
       {props.thread.length > 0 && (
         <div className="thread-msgs">
           {props.thread.map((m, i) => (

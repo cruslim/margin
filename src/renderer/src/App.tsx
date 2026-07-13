@@ -397,6 +397,16 @@ export function App() {
     [chatBusy, patchSession, runCommentTurn],
   );
 
+  const toggleCollapseFinding = useCallback(
+    (session: Session, finding: Finding) => {
+      const key = dismissalKey(finding);
+      patchSession(session.key, (s) => ({
+        collapsedFindings: { ...(s.collapsedFindings ?? {}), [key]: !s.collapsedFindings?.[key] },
+      }));
+    },
+    [patchSession],
+  );
+
   const toggleCollapseComment = useCallback(
     (session: Session, commentId: string) => {
       patchSession(session.key, (s) => ({
@@ -449,6 +459,7 @@ export function App() {
         findings: [],
         changeSummary: '',
         costUsd: null,
+        modelChoice: smoke.model || undefined,
       };
       setSessions([session]);
       setActiveKey(session.key);
@@ -578,6 +589,8 @@ export function App() {
                   onReplyComment={(comment, text) => replyComment(active, comment, text)}
                   onToggleCollapse={(comment) => toggleCollapseComment(active, comment.id)}
                   onDeleteComment={(comment) => deleteComment(active, comment.id)}
+                  collapsedFindings={active.collapsedFindings ?? {}}
+                  onToggleFinding={(f) => toggleCollapseFinding(active, f)}
                   onApplyPatch={(patch, commentId) => applyPatchToComment(active, patch, commentId)}
                 />
               ) : (
@@ -591,6 +604,8 @@ export function App() {
               streamText={activeStream}
               dismissedKeys={dismissedKeys}
               dismissals={activeDismissals}
+              collapsedFindings={active.collapsedFindings ?? {}}
+              onToggleFinding={(f) => toggleCollapseFinding(active, f)}
               onDismiss={(f) => dismissFinding(active, f)}
               onRestore={(key) => restoreDismissal(active.repoPath, key)}
               onJumpToFinding={(f: Finding) => setSelectedFile(f.file)}

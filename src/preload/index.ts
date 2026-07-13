@@ -39,6 +39,7 @@ const api: MarginApi = {
           run: !!process.env.MARGIN_SMOKE_RUN,
           chat: process.env.MARGIN_SMOKE_CHAT ?? '',
           comment: process.env.MARGIN_SMOKE_COMMENT ?? '',
+          model: process.env.MARGIN_SMOKE_MODEL ?? '',
         }
       : null,
 };

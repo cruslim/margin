@@ -87,7 +87,13 @@ app.whenReady().then(() => {
       // In auto-run smoke mode, capture after the review settles into the UI
       // (unless a smoke chat turn follows — then capture after that instead).
       if (process.env.MARGIN_SMOKE_RUN && !process.env.MARGIN_SMOKE_CHAT) {
-        captureAndQuit(BrowserWindow.fromWebContents(sender)!, 3000);
+        const win = BrowserWindow.fromWebContents(sender)!;
+        if (process.env.MARGIN_SMOKE_COLLAPSE) {
+          setTimeout(() => {
+            win.webContents.executeJavaScript(`document.querySelector('.finding-head.toggleable')?.click()`).catch(() => {});
+          }, 1500);
+        }
+        captureAndQuit(win, 3000);
       }
     }
   });

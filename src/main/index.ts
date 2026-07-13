@@ -147,52 +147,52 @@ app.whenReady().then(() => {
       if (process.env.MARGIN_SMOKE_COMPOSER) {
         // Open the line-comment composer by clicking a "+" widget, then capture.
         setTimeout(async () => {
+          try {
           const report = await win.webContents.executeJavaScript(`(async () => {
             // Select the source file (first file may be a one-line config diff).
             const fileBtn = [...document.querySelectorAll('.file-item')].find((b) => b.textContent.includes('cart.js'));
             fileBtn?.click();
             await new Promise((r) => setTimeout(r, 1200));
-            const spans = [...document.querySelectorAll('span[data-line-num]')];
-            const debug = spans.slice(0, 30).map((el) => el.getAttribute('data-line-num') + '@' + el.closest('td')?.className.split(' ')[0] + '/' + el.closest('td')?.getAttribute('data-side'));
+            // Query fresh every time — the diff lib rebuilds its table on re-render,
+            // so cached element references go stale.
             const byLine = (n) =>
-              spans.find(
+              [...document.querySelectorAll('span[data-line-num]')].find(
                 (el) =>
                   el.getAttribute('data-line-num') === String(n) &&
                   (el.closest('td')?.getAttribute('data-side') === 'new' || el.closest('td')?.className.includes('new-num')),
               );
-            const start = byLine(15);
-            const end = byLine(20);
-            const fire = (el, type) => {
-              const r = el.getBoundingClientRect();
-              el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: r.x + 4, clientY: r.y + 4, buttons: 1 }));
+            const drag = async (a, b) => {
+              const s = byLine(a);
+              const e = byLine(b);
+              if (!s || !e) return false;
+              s.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, buttons: 1 }));
+              e.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, buttons: 1 }));
+              e.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+              await new Promise((r) => setTimeout(r, 500));
+              return true;
             };
-            let selecting = false;
-            if (start && end) {
-              // Simulate a gutter drag from line 15 to 20 — composer bar opens on mouseup.
-              fire(start, 'mousedown');
-              selecting = !!document.querySelector('.diff-multi-selecting');
-              fire(end, 'mouseover');
-              fire(end, 'mouseup');
-              await new Promise((r) => setTimeout(r, 50));
-            }
-            const at50 = document.querySelectorAll('.diff-multi-select-active').length;
-            const lit50 = document.querySelectorAll('tr.margin-range-lit').length;
-            const qNew = document.querySelectorAll('td.diff-line-new-num span[data-line-num]').length;
-            await new Promise((r) => setTimeout(r, 700));
+            await drag(15, 20);
+            const composer1 = document.querySelector('.range-composer')?.textContent?.slice(0, 30) ?? null;
+            // Cancel, then drag a different range.
+            const cancelBtn = [...document.querySelectorAll('.range-composer button')].find((b) => b.textContent === 'Cancel');
+            cancelBtn?.click();
+            await new Promise((r) => setTimeout(r, 500));
+            const composerAfterCancel = !!document.querySelector('.range-composer');
+            await drag(22, 27);
+            const composer2 = document.querySelector('.range-composer')?.textContent?.slice(0, 30) ?? null;
             return {
-              spans: spans.length,
-              selecting,
-              at50,
-              lit50,
-              qNew,
-              at750: document.querySelectorAll('.diff-multi-select-active').length,
-              lit750: document.querySelectorAll('tr.margin-range-lit').length,
-              composer: !!document.querySelector('.range-composer'),
+              composer1,
+              composerAfterCancel,
+              composer2,
+              lit: document.querySelectorAll('tr.margin-range-lit').length,
             };
           })()`);
           console.log('composer smoke:', JSON.stringify(report));
+          } catch (err) {
+            console.log('composer smoke error:', String(err));
+          }
         }, 4000);
-        captureAndQuit(win, 6000);
+        captureAndQuit(win, 9000);
       } else {
         captureAndQuit(win, 4500);
       }

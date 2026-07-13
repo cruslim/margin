@@ -41,6 +41,25 @@ export function DiffPane(props: {
     msRef.current?.clearSelection();
   };
 
+  // Complete drag-selections ourselves: the lib's onMultiSelectComplete reads
+  // line data from a DiffFile reference that goes stale after re-renders
+  // (e.g. after a composer cancel), silently dropping subsequent selections.
+  // onMultiSelectChange is DOM-driven and always fires, so track the range
+  // during the drag and finish it on mouseup.
+  const dragRange = useRef<{ side: 'old' | 'new'; start: number; end: number } | null>(null);
+  useEffect(() => {
+    const onUp = () => {
+      // Defer past the lib's own mouseup handling.
+      setTimeout(() => {
+        const r = dragRange.current;
+        dragRange.current = null;
+        if (r && r.start !== r.end) setPendingRange(r);
+      }, 0);
+    };
+    document.addEventListener('mouseup', onUp);
+    return () => document.removeEventListener('mouseup', onUp);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     setDiff(null);
@@ -146,14 +165,14 @@ export function DiffPane(props: {
       <div className="diff-scroll">
         <DiffViewWithMultiSelect<LineExtend>
           ref={msRef}
-          onMultiSelectComplete={(result) => {
-            if (result.range.startLineNumber !== result.range.endLineNumber) {
-              setPendingRange({
-                side: result.range.side,
-                start: result.range.startLineNumber,
-                end: result.range.endLineNumber,
-              });
-            }
+          onMultiSelectChange={(range) => {
+            dragRange.current = range
+              ? {
+                  side: range.side as 'old' | 'new',
+                  start: Math.min(range.startLineNumber, range.endLineNumber),
+                  end: Math.max(range.startLineNumber, range.endLineNumber),
+                }
+              : null;
           }}
           data={{
             oldFile: { fileName: diff.path, content: diff.oldContent, fileLang: diff.lang },

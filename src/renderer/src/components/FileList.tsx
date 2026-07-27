@@ -3,14 +3,14 @@ import type { ChangedFile } from '../../../shared/ipc.js';
 
 type ViewMode = 'list' | 'tree';
 
-type DirNode = {
+export type DirNode = {
   name: string;
   path: string;
   dirs: DirNode[];
   files: ChangedFile[];
 };
 
-function buildTree(files: ChangedFile[]): DirNode {
+export function buildTree(files: ChangedFile[]): DirNode {
   const root: DirNode = { name: '', path: '', dirs: [], files: [] };
   const byPath = new Map<string, DirNode>([['', root]]);
   const dirFor = (path: string): DirNode => {

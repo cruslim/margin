@@ -488,11 +488,15 @@ export function App() {
       } else if (smoke.comment) {
         // Exercise the lazy-session path: comment on a line with no review run.
         window.margin.changedFiles(targetOf(session)).then((files) => {
-          const file = files.find((f) => f.path.endsWith('.js')) ?? files[0];
+          const file =
+            (smoke.commentFile ? files.find((f) => f.path.includes(smoke.commentFile)) : undefined) ??
+            files.find((f) => f.path.endsWith('.js')) ??
+            files[0];
           if (file) {
             // Late re-select: the session's own file-load effect races this and would win with files[0].
             setTimeout(() => setSelectedFile(file.path), 600);
-            addComment(session, file.path, 'new', 20, 20, '', smoke.comment);
+            const line = smoke.commentLine || 20;
+            addComment(session, file.path, 'new', line, line, '', smoke.comment);
           }
         });
       }

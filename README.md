@@ -1,48 +1,37 @@
 # Margin
 
-Local AI code review with chat. Review branches and uncommitted changes before they leave your machine — nothing is ever pushed or posted anywhere; the only network traffic is the Claude API calls made through your existing `claude` login.
+Local AI code review with chat. Review branches and uncommitted changes before they leave your machine — nothing is ever pushed or posted anywhere; the only network traffic is the model API calls made through your existing `claude` login (plus any extra finders you configure).
 
-## Status
+## Features
 
-Milestone 1 (review engine spike) — **done and verified**.
+- **Reviews of local refs** — pick a branch (vs any base) or your uncommitted working tree; no remote, no PR required
+- **Split/unified diff viewer** with inline finding cards anchored to file/line
+- **Chat** — general session chat, per-finding threads, and GitHub-style line-anchored comment threads (hover a diff line, click +; works even before a review runs), all streamed live
+- **Propose fix** — the agent replies with a unified diff; applying it always shows the patch and asks first (`git apply --recount`)
+- **Multi-model finders** — an OpenAI-compatible endpoint (GPT/Ollama/OpenRouter) and the CodeRabbit CLI can run in parallel with the Claude reviewer; findings are source-tagged with a per-reviewer Agent-log filter
+- **Verifier pass** — an agentic session cross-examines every finding against the code and marks it verified/refuted/uncertain with reasons
+- **Delta re-reviews** — "Review new changes" covers only commits since the last review
+- **Dismissal memory** — dismissed findings are hidden and never re-reported (per-repo `dismissals.json`, restorable)
+- **Per-repo instructions** — a `.margin.md` in the repo root is injected into every review
+- **Model picker** — per-session default/fable/opus/sonnet/haiku for reviews and chat
 
-- [x] M1 — Engine: worktree-per-session, Claude Agent SDK review with read-only tools, structured JSON findings, session resume for chat
-- [x] M2 — Electron app shell: repo picker, session list, split/unified diff viewer for local refs (`npm run dev`)
-- [x] M3 — Review pipeline wired to UI: streamed agent transcript, findings panel, inline finding cards anchored in the diff
-- [x] M4 — Chat: finding-level threads, general chat tab, propose-fix with `git apply --recount` + confirm
-- [x] Comments — GitHub-style line-anchored AI threads: hover a diff line, click +, comment (with from-line range control); works even before a review runs
-- [x] Streaming replies — chat/comment answers render live as they generate
-- [x] Model picker — per-session default/sonnet/opus/haiku for reviews and chat
-- [x] Delta re-reviews — "Review new changes" covers only commits since the last review
-- [x] Dismissal memory — dismissed findings hidden and never re-reported (per-repo `dismissals.json`, restorable)
-- [x] `.margin.md` — per-repo review instructions injected into every review
-- [x] v0.1 packaged (`npm run install-app` → Margin.app)
-- [x] Multi-model finders — OpenAI-compatible endpoint (GPT/Ollama/OpenRouter) + CodeRabbit CLI run in parallel with the Claude reviewer; findings source-tagged; per-reviewer Agent-log filter
-- [x] Verifier pass — an agentic session cross-examines every finding against the code; verified/refuted/uncertain verdicts with reasons
-- [ ] Later: markdown export, per-finder findings streaming, multiple saved providers
+## Requirements
 
-## Storage
-
-Plain JSON files, human-readable, all local — no database:
-
-```
-~/Library/Application Support/margin/reviews/
-  <repo-name>-<hash>/          # hash of repo path, so same-named repos don't collide
-    repo.json                  # repo path, name, branches
-    <branch-slug>/             # one folder per reviewed branch ("working-tree" for uncommitted)
-      session-<key>.json       # findings, summary, model, token usage, cost, transcript
-```
+- macOS (packaging targets mac; `npm run dev` may work elsewhere but is untested)
+- Node 20+
+- The [Claude Code](https://claude.com/claude-code) CLI installed and logged in — Margin reviews run through your existing `claude` login via the Claude Agent SDK
 
 ## Install / run
 
 ```sh
+npm install
 npm run package        # builds dist/mac-arm64/Margin.app (unsigned, local use)
 ditto dist/mac-arm64/Margin.app ~/Applications/Margin.app
 ```
 
 Or for development: `npm run dev`.
 
-## Try the engine
+## Try the engine from the CLI
 
 ```sh
 # Review a branch against main
@@ -57,13 +46,31 @@ npm run chat -- "Propose a fix for finding 1"
 
 ## Architecture
 
-- **Electron + TypeScript everywhere** (main process = backend; React renderer to come)
+- **Electron + TypeScript everywhere** — the main process is the backend, React in the renderer
 - **Review engine** (`src/engine/`): creates a detached temp git worktree per session so the agent reads a stable snapshot and never touches your working copy; runs the Claude Agent SDK with tools restricted to Read/Grep/Glob; the agent verifies each suspicion against the codebase before reporting; emits findings as JSON anchored to file/line with an exact snippet for re-anchoring in the diff viewer
 - **Chat** (`src/engine/chat.ts`): resumes the review session by ID — the agent keeps everything it read and found. Worktrees stay alive until a session is closed so chat can keep reading files
-- **Persistence** (`src/main/storage.ts`): JSON files, folder per repo / per branch (see Storage below)
+- **Persistence** (`src/main/storage.ts`): plain JSON files, human-readable, all local — no database
+
+```
+~/Library/Application Support/margin/reviews/
+  <repo-name>-<hash>/          # hash of repo path, so same-named repos don't collide
+    repo.json                  # repo path, name, branches
+    <branch-slug>/             # one folder per reviewed branch ("working-tree" for uncommitted)
+      session-<key>.json       # findings, summary, model, token usage, cost, transcript
+```
 
 ## Safety rules
 
 - Agent tools are read-only (Bash/Edit/Write explicitly disallowed)
 - Propose-fix always shows the patch and asks before `git apply`; never mutates the working copy silently
 - No remotes, no push, no PR integration by design
+
+## Roadmap
+
+- [ ] Markdown export of a review
+- [ ] Per-finder findings streaming
+- [ ] Multiple saved providers
+
+## License
+
+[MIT](LICENSE)

@@ -4,3 +4,4 @@ out/
 .margin/
 *.log
 .DS_Store
+.vscode/

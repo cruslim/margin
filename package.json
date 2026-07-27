@@ -29,6 +29,7 @@
     "package": "electron-vite build && electron-builder --mac",
     "review": "tsx scripts/review.ts",
     "chat": "tsx scripts/chat.ts",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "install-app": "electron-vite build && electron-builder --mac && ditto dist/mac-arm64/Margin.app \"$HOME/Applications/Margin.app\" && rm -rf dist"
   },
@@ -52,6 +53,7 @@
     "electron-vite": "^5.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vite": "^7.3.6"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
   }
 }

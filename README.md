@@ -65,6 +65,10 @@ npm run chat -- "Propose a fix for finding 1"
 - Propose-fix always shows the patch and asks before `git apply`; never mutates the working copy silently
 - No remotes, no push, no PR integration by design
 
+## Screenshot
+<img width="2115" height="1289" alt="image" src="https://github.com/user-attachments/assets/c8588c86-64ec-469b-97f6-80fd4a48f507" />
+
+
 ## Roadmap
 
 - [ ] Markdown export of a review

@@ -1,0 +1,167 @@
+import { Fragment, useMemo, useState } from 'react';
+import type { ChangedFile } from '../../../shared/ipc.js';
+
+type ViewMode = 'list' | 'tree';
+
+type DirNode = {
+  name: string;
+  path: string;
+  dirs: DirNode[];
+  files: ChangedFile[];
+};
+
+function buildTree(files: ChangedFile[]): DirNode {
+  const root: DirNode = { name: '', path: '', dirs: [], files: [] };
+  const byPath = new Map<string, DirNode>([['', root]]);
+  const dirFor = (path: string): DirNode => {
+    const existing = byPath.get(path);
+    if (existing) return existing;
+    const cut = path.lastIndexOf('/');
+    const parent = dirFor(cut === -1 ? '' : path.slice(0, cut));
+    const node: DirNode = { name: path.slice(cut + 1), path, dirs: [], files: [] };
+    parent.dirs.push(node);
+    byPath.set(path, node);
+    return node;
+  };
+  for (const f of files) {
+    const cut = f.path.lastIndexOf('/');
+    dirFor(cut === -1 ? '' : f.path.slice(0, cut)).files.push(f);
+  }
+  collapseChains(root);
+  sortTree(root);
+  return root;
+}
+
+/** Merge single-child directory chains (src → services → x becomes "src/services/x"). */
+function collapseChains(node: DirNode) {
+  for (const dir of node.dirs) {
+    while (dir.files.length === 0 && dir.dirs.length === 1) {
+      const only = dir.dirs[0];
+      dir.name = `${dir.name}/${only.name}`;
+      dir.path = only.path;
+      dir.dirs = only.dirs;
+      dir.files = only.files;
+    }
+    collapseChains(dir);
+  }
+}
+
+function sortTree(node: DirNode) {
+  node.dirs.sort((a, b) => a.name.localeCompare(b.name));
+  node.files.sort((a, b) => a.path.localeCompare(b.path));
+  for (const dir of node.dirs) sortTree(dir);
+}
+
+function baseName(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1);
+}
+
+const ListIcon = (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+    <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+  </svg>
+);
+
+const TreeIcon = (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+    <path d="M4.5 3v8a1.5 1.5 0 0 0 1.5 1.5h3M4.5 7.5H9" />
+    <circle cx="4.5" cy="3" r="1.6" />
+    <circle cx="11.5" cy="7.5" r="1.6" />
+    <circle cx="11.5" cy="12.5" r="1.6" />
+  </svg>
+);
+
+export function FileList(props: {
+  files: ChangedFile[];
+  selected: string | null;
+  flagged: Set<string>;
+  onSelect: (path: string) => void;
+}) {
+  const [mode, setMode] = useState<ViewMode>(
+    () => (localStorage.getItem('margin.filelist.view') === 'list' ? 'list' : 'tree'),
+  );
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const tree = useMemo(() => buildTree(props.files), [props.files]);
+
+  const setView = (m: ViewMode) => {
+    setMode(m);
+    localStorage.setItem('margin.filelist.view', m);
+  };
+  const toggleDir = (path: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const fileRow = (f: ChangedFile, depth: number, label: string, rtl: boolean) => (
+    <button
+      key={f.path}
+      className={`file-item ${f.path === props.selected ? 'selected' : ''}`}
+      style={depth > 0 ? { paddingLeft: 7 + depth * 14 } : undefined}
+      title={f.path}
+      onClick={() => props.onSelect(f.path)}
+    >
+      <span className={`file-status status-${f.status}`}>{f.status}</span>
+      <span className={`file-path ${rtl ? 'rtl' : ''}`}>{label}</span>
+      {props.flagged.has(f.path) && <span className="file-flag">●</span>}
+    </button>
+  );
+
+  const renderDir = (node: DirNode, depth: number): React.ReactNode => (
+    <>
+      {node.dirs.map((dir) => {
+        const isCollapsed = collapsed.has(dir.path);
+        return (
+          <Fragment key={dir.path}>
+            <button
+              className="file-item dir-row"
+              style={{ paddingLeft: 7 + depth * 14 }}
+              title={dir.path}
+              onClick={() => toggleDir(dir.path)}
+            >
+              <span className="dir-chevron">{isCollapsed ? '▸' : '▾'}</span>
+              <span className="dir-name">{dir.name}</span>
+            </button>
+            {!isCollapsed && renderDir(dir, depth + 1)}
+          </Fragment>
+        );
+      })}
+      {node.files.map((f) => fileRow(f, depth, baseName(f.path), false))}
+    </>
+  );
+
+  return (
+    <>
+      <div className="filelist-toolbar">
+        <span className="filelist-count">
+          {props.files.length} file{props.files.length === 1 ? '' : 's'}
+        </span>
+        <span className="view-toggle">
+          <button
+            className={`icon-btn ${mode === 'tree' ? 'active' : ''}`}
+            title="Tree view"
+            onClick={() => setView('tree')}
+          >
+            {TreeIcon}
+          </button>
+          <button
+            className={`icon-btn ${mode === 'list' ? 'active' : ''}`}
+            title="List view"
+            onClick={() => setView('list')}
+          >
+            {ListIcon}
+          </button>
+        </span>
+      </div>
+      <div className="filelist-items">
+        {mode === 'tree'
+          ? renderDir(tree, 0)
+          : props.files.map((f) => fileRow(f, 0, f.path, true))}
+        {props.files.length === 0 && <div className="empty-note">No changed files</div>}
+      </div>
+    </>
+  );
+}

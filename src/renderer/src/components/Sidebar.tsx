@@ -11,6 +11,7 @@ const STATUS_ICON: Record<Session['status'], string> = {
 };
 
 export function Sidebar(props: {
+  width: number;
   repos: RepoInfo[];
   sessions: Session[];
   activeKey: string | null;
@@ -19,12 +20,19 @@ export function Sidebar(props: {
   onSelectSession: (key: string) => void;
   onDeleteSession: (key: string) => void;
   onRemoveRepo: (path: string) => void;
+  onRefreshRepo: (path: string) => Promise<void>;
   onOpenSettings: () => void;
 }) {
   const [formRepo, setFormRepo] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState<string | null>(null);
+
+  const refresh = (path: string) => {
+    setRefreshing(path);
+    props.onRefreshRepo(path).finally(() => setRefreshing((prev) => (prev === path ? null : prev)));
+  };
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ width: props.width }}>
       <div className="sidebar-header">
         <span className="logo">Margin</span>
         <span className="row-actions">
@@ -46,9 +54,21 @@ export function Sidebar(props: {
                   ✕
                 </button>
                 <button
+                  className={`icon-btn ${refreshing === repo.path ? 'spinning' : ''}`}
+                  title="Refresh branches"
+                  disabled={refreshing === repo.path}
+                  onClick={() => refresh(repo.path)}
+                >
+                  ↻
+                </button>
+                <button
                   className="icon-btn"
                   title="New review"
-                  onClick={() => setFormRepo(formRepo === repo.path ? null : repo.path)}
+                  onClick={() => {
+                    const opening = formRepo !== repo.path;
+                    setFormRepo(opening ? repo.path : null);
+                    if (opening) refresh(repo.path);
+                  }}
                 >
                   ＋
                 </button>

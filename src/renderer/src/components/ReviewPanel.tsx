@@ -12,6 +12,7 @@ function fmtTokens(n: number): string {
 }
 
 export function ReviewPanel(props: {
+  width: number;
   session: Session;
   busy: boolean;
   streamScope?: ChatScope;
@@ -64,7 +65,7 @@ export function ReviewPanel(props: {
   const refuted = s.findings.filter((f) => f.verdict === 'refuted');
 
   return (
-    <aside className="review-panel">
+    <aside className="review-panel" style={{ width: props.width }}>
       <div className="panel-tabs">
         <button className={tab === 'findings' ? 'active' : ''} onClick={() => setTab('findings')}>
           Findings{s.findings.length > 0 ? ` (${s.findings.length})` : ''}

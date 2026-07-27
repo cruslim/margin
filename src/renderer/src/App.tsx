@@ -20,6 +20,8 @@ import { Sidebar } from './components/Sidebar.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { DiffPane } from './components/DiffPane.js';
 import { ReviewPanel } from './components/ReviewPanel.js';
+import { FileList } from './components/FileList.js';
+import { ResizeHandle, usePanelWidth } from './components/Resizer.js';
 
 export type { Session };
 
@@ -43,6 +45,10 @@ export function App() {
   const [dismissals, setDismissals] = useState<Record<string, DismissedFinding[]>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const loaded = useRef(false);
+
+  const sidebarPanel = usePanelWidth('sidebar', 230, 160, 480, 1);
+  const filesPanel = usePanelWidth('filelist', 220, 150, 520, 1);
+  const reviewPanel = usePanelWidth('review', 340, 260, 720, -1);
 
   const active = useMemo(() => sessions.find((s) => s.key === activeKey) ?? null, [sessions, activeKey]);
 
@@ -116,6 +122,13 @@ export function App() {
     if (!repo) return;
     window.margin.saveRepo(repo).catch(() => {});
     setRepos((prev) => (prev.some((r) => r.path === repo.path) ? prev : [...prev, repo]));
+  }, []);
+
+  const refreshRepo = useCallback(async (path: string) => {
+    const repo = await window.margin.openRepo(path);
+    if (!repo) return;
+    window.margin.saveRepo(repo).catch(() => {});
+    setRepos((prev) => prev.map((r) => (r.path === path ? repo : r)));
   }, []);
 
   const deleteSession = useCallback(
@@ -497,6 +510,7 @@ export function App() {
       ),
     [activeFindings, selectedFile, dismissedKeys],
   );
+  const flaggedFiles = useMemo(() => new Set(activeFindings.map((f) => f.file)), [activeFindings]);
   const fileComments = useMemo(
     () => (active?.comments ?? []).filter((c) => c.file === selectedFile),
     [active?.comments, selectedFile],
@@ -508,6 +522,7 @@ export function App() {
   return (
     <div className="app">
       <Sidebar
+        width={sidebarPanel.width}
         repos={repos}
         sessions={sessions}
         activeKey={activeKey}
@@ -516,11 +531,13 @@ export function App() {
         onSelectSession={setActiveKey}
         onDeleteSession={deleteSession}
         onRemoveRepo={removeRepo}
+        onRefreshRepo={refreshRepo}
         onOpenSettings={() => {
           console.log('[margin] settings opened via gear click');
           setSettingsOpen(true);
         }}
       />
+      <ResizeHandle onMouseDown={sidebarPanel.startDrag} />
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {active ? (
         <main className="main">
@@ -569,20 +586,15 @@ export function App() {
             </div>
           </header>
           <div className="workspace">
-            <nav className="filelist">
-              {files.map((f) => (
-                <button
-                  key={f.path}
-                  className={`file-item ${f.path === selectedFile ? 'selected' : ''}`}
-                  onClick={() => setSelectedFile(f.path)}
-                >
-                  <span className={`file-status status-${f.status}`}>{f.status}</span>
-                  <span className="file-path">{f.path}</span>
-                  {activeFindings.some((x) => x.file === f.path) && <span className="file-flag">●</span>}
-                </button>
-              ))}
-              {files.length === 0 && <div className="empty-note">No changed files</div>}
+            <nav className="filelist" style={{ width: filesPanel.width }}>
+              <FileList
+                files={files}
+                selected={selectedFile}
+                flagged={flaggedFiles}
+                onSelect={setSelectedFile}
+              />
             </nav>
+            <ResizeHandle onMouseDown={filesPanel.startDrag} />
             <section className="diffpane">
               {selectedFile ? (
                 <DiffPane
@@ -607,7 +619,9 @@ export function App() {
                 <div className="empty-note">Select a file</div>
               )}
             </section>
+            <ResizeHandle onMouseDown={reviewPanel.startDrag} />
             <ReviewPanel
+              width={reviewPanel.width}
               session={active}
               busy={!!chatBusy[active.key]}
               streamScope={activeScope}

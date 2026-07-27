@@ -147,7 +147,7 @@ export interface MarginApi {
   saveSessions(sessions: Session[]): Promise<void>;
   deleteSession(session: Session): Promise<void>;
   removeRepoData(repoPath: string): Promise<void>;
-  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string; model: string } | null;
+  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string; commentFile: string; commentLine: number; model: string } | null;
 }
 
 export type { DismissedFinding, Finding, ReviewResult, ReviewTarget };

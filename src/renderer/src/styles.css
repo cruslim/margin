@@ -468,7 +468,25 @@ td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
 
 .chat-tab { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .chat-list { gap: 8px; }
-.chat-msg { border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5; user-select: text; display: flex; flex-direction: column; gap: 8px; }
+.chat-msg { position: relative; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.5; user-select: text; display: flex; flex-direction: column; gap: 8px; }
+.copy-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  visibility: hidden;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 5px;
+  line-height: 1;
+  font-size: 11px;
+}
+.chat-msg:hover .copy-btn { visibility: visible; }
+.copy-btn:hover { color: var(--text); }
+.copy-btn.copied { visibility: visible; color: var(--ok); }
 .chat-msg.user { background: #2a3352; align-self: flex-end; max-width: 90%; margin-left: 24px; }
 .chat-msg.assistant { background: var(--bg-raised); border: 1px solid var(--border); max-width: 100%; }
 .thread-msgs .chat-msg.user { align-self: stretch; margin-left: 0; }

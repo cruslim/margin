@@ -262,6 +262,11 @@ app.whenReady().then(() => {
             ).catch(() => {});
           }, 1500);
         }
+        if (process.env.MARGIN_SMOKE_JS) {
+          setTimeout(() => {
+            win.webContents.executeJavaScript(process.env.MARGIN_SMOKE_JS!).catch(() => {});
+          }, 1500);
+        }
         captureAndQuit(win, 3000, 'chat:send finally');
       }
     }

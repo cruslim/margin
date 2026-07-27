@@ -22,11 +22,38 @@ export function splitDiffBlocks(text: string): Array<{ type: 'text' | 'diff'; co
   return parts.filter((p) => p.content);
 }
 
+const CopyIcon = (
+  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+    <path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
+  </svg>
+);
+
+/** Hover button that copies an AI reply's raw markdown to the clipboard. */
+function CopyButton(props: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className={`copy-btn ${copied ? 'copied' : ''}`}
+      title="Copy reply"
+      onClick={() => {
+        navigator.clipboard.writeText(props.text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    >
+      {copied ? '✓' : CopyIcon}
+    </button>
+  );
+}
+
 export function ChatBubble(props: { msg: ChatMessage; onApplyPatch: (patch: string) => void }) {
   const { msg } = props;
   const parts = msg.role === 'assistant' ? splitDiffBlocks(msg.text) : [{ type: 'text' as const, content: msg.text }];
   return (
     <div className={`chat-msg ${msg.role}`}>
+      {msg.role === 'assistant' && <CopyButton text={msg.text} />}
       {parts.map((p, i) =>
         p.type === 'diff' ? (
           <div key={i} className="patch-block">

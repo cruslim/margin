@@ -152,6 +152,58 @@ body.resizing * { pointer-events: none; }
   font: inherit;
 }
 
+.branch-select { position: relative; }
+.branch-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 6px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.branch-select-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-select-caret { color: var(--text-dim); font-size: 9px; }
+.branch-select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.branch-select-menu input {
+  background: var(--bg);
+  color: var(--text);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  font: inherit;
+  outline: none;
+}
+.branch-select-list { max-height: 200px; overflow-y: auto; }
+.branch-option {
+  padding: 5px 8px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.branch-option.active { background: var(--bg-raised); }
+.branch-option.selected { color: var(--accent); }
+.branch-option.none { color: var(--text-dim); cursor: default; }
+
 /* ---------- main ---------- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .main-empty { align-items: center; justify-content: center; display: flex; }
@@ -193,6 +245,16 @@ body.resizing * { pointer-events: none; }
   font-size: 12px;
 }
 .run-btn.small { padding: 4px 10px; align-self: flex-start; }
+.form-actions { display: flex; gap: 8px; }
+.cancel-btn {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 14px;
+}
+.cancel-btn:hover { background: var(--bg-raised); color: var(--text); }
+.cancel-btn.small { padding: 4px 10px; }
 
 .workspace { flex: 1; display: flex; min-height: 0; }
 

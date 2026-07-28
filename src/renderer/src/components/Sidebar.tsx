@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BranchSelect } from './BranchSelect.js';
 import type { RepoInfo } from '../../../shared/ipc.js';
 import type { Session } from '../App.js';
 import { sessionTitle } from '../App.js';
@@ -81,6 +82,7 @@ export function Sidebar(props: {
                   props.onNewSession(repo, base, head);
                   setFormRepo(null);
                 }}
+                onCancel={() => setFormRepo(null)}
               />
             )}
             {props.sessions
@@ -119,6 +121,7 @@ export function Sidebar(props: {
 function NewReviewForm(props: {
   repo: RepoInfo;
   onSubmit: (baseRef: string, headRef: string | null) => void;
+  onCancel: () => void;
 }) {
   const defaultBase = props.repo.branches.includes('main')
     ? 'main'
@@ -138,24 +141,29 @@ function NewReviewForm(props: {
     >
       <label>
         Review
-        <select value={head} onChange={(e) => setHead(e.target.value)}>
-          <option value="__working__">uncommitted changes</option>
-          {props.repo.branches.map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
+        <BranchSelect
+          value={head}
+          options={[
+            { value: '__working__', label: 'uncommitted changes' },
+            ...props.repo.branches.map((b) => ({ value: b, label: b })),
+          ]}
+          onChange={setHead}
+        />
       </label>
       {head !== '__working__' && (
         <label>
           against
-          <select value={base} onChange={(e) => setBase(e.target.value)}>
-            {props.repo.branches.map((b) => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
+          <BranchSelect
+            value={base}
+            options={props.repo.branches.map((b) => ({ value: b, label: b }))}
+            onChange={setBase}
+          />
         </label>
       )}
-      <button type="submit" className="run-btn small">Open</button>
+      <div className="form-actions">
+        <button type="submit" className="run-btn small">Open</button>
+        <button type="button" className="cancel-btn small" onClick={props.onCancel}>Cancel</button>
+      </div>
     </form>
   );
 }

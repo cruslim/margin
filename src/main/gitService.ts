@@ -21,7 +21,7 @@ export async function openRepo(path: string): Promise<RepoInfo | null> {
   } catch {
     return null;
   }
-  const branches = (await git(path, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']))
+  const branches = (await git(path, ['for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads']))
     .split('\n')
     .filter(Boolean);
   const currentBranch = (await git(path, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();

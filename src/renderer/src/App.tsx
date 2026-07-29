@@ -111,7 +111,8 @@ export function App() {
       .then((f) => {
         if (cancelled) return;
         setFiles(f);
-        setSelectedFile(f[0]?.path ?? null);
+        // Open on something hand-written; a lockfile is rarely what you came to read.
+        setSelectedFile((f.find((x) => !x.generated) ?? f[0])?.path ?? null);
       })
       .catch(() => setFiles([]));
     return () => {

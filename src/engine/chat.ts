@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 export interface ChatReply {
@@ -18,6 +20,12 @@ export interface ChatOptions {
 
 const FRESH_SESSION_PROMPT = `You are Margin, a code review assistant. You are answering questions about a changeset inside a checkout of the repository. Explore with Read/Grep/Glob to ground your answers in the actual code. Be concise and concrete.`;
 
+/** System prompt for a fresh (non-resumed) session, with .margin.md instructions appended when present. */
+export function freshSessionPrompt(projectInstructions: string): string {
+  if (!projectInstructions.trim()) return FRESH_SESSION_PROMPT;
+  return `${FRESH_SESSION_PROMPT}\n\nProject-specific instructions (from .margin.md — follow these):\n${projectInstructions.trim()}`;
+}
+
 /**
  * Send a chat turn. With a sessionId, resumes that review session — it keeps
  * everything the reviewer already read and found. With null (commenting before
@@ -34,10 +42,16 @@ export async function chat(
   let text = '';
   let costUsd: number | null = null;
 
+  // Resumed review sessions already saw .margin.md in the review prompt; fresh
+  // sessions (commenting before any review ran) need it injected here.
+  const projectInstructions = sessionId
+    ? ''
+    : await readFile(join(workDir, '.margin.md'), 'utf8').catch(() => '');
+
   const stream = query({
     prompt: message,
     options: {
-      ...(sessionId ? { resume: sessionId } : { systemPrompt: FRESH_SESSION_PROMPT }),
+      ...(sessionId ? { resume: sessionId } : { systemPrompt: freshSessionPrompt(projectInstructions) }),
       cwd: workDir,
       allowedTools: ['Read', 'Grep', 'Glob'],
       disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'],

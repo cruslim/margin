@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import type { ChangedFile, FileDiff, RepoInfo } from '../shared/ipc.js';
 import type { ReviewTarget } from '../engine/types.js';
+import { untrackedFileDiff, untrackedPaths } from '../engine/worktree.js';
 
 const run = promisify(execFile);
 
@@ -45,6 +46,11 @@ export async function changedFiles(target: ReviewTarget): Promise<ChangedFile[]>
       files.push({ path: parts[i + 1], status });
       i += 2;
     }
+  }
+  // Working-tree reviews: `git diff` never lists untracked files — surface them as added.
+  if (!target.headRef) {
+    for (const p of await untrackedPaths(target.repoPath)) files.push({ path: p, status: 'A' });
+    files.sort((a, b) => a.path.localeCompare(b.path));
   }
   return files;
 }
@@ -89,7 +95,7 @@ export async function applyPatch(repoPath: string, patch: string): Promise<{ ok:
 
 export async function fileDiff(target: ReviewTarget, path: string): Promise<FileDiff> {
   const { repoPath, baseRef, headRef } = target;
-  const hunkText = await git(repoPath, ['diff', ...diffArgs(target), '--', path]);
+  let hunkText = await git(repoPath, ['diff', ...diffArgs(target), '--', path]);
 
   let oldContent: string;
   let newContent: string;
@@ -100,6 +106,10 @@ export async function fileDiff(target: ReviewTarget, path: string): Promise<File
   } else {
     oldContent = await showFile(repoPath, 'HEAD', path);
     newContent = await readFile(join(repoPath, path), 'utf8').catch(() => '');
+    // Untracked file: `git diff` produced nothing — synthesize the new-file hunk.
+    if (!hunkText.trim() && !oldContent && newContent) {
+      hunkText = await untrackedFileDiff(repoPath, path);
+    }
   }
 
   return {

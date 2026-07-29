@@ -44,6 +44,8 @@ export interface Comment {
   messages: ChatMessage[];
   /** Collapsed to just the header row in the diff. */
   collapsed?: boolean;
+  /** Conversation marked as resolved (GitHub-style). Resolving also collapses the thread. */
+  resolved?: boolean;
 }
 
 export interface Session {

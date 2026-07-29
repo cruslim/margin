@@ -20,7 +20,7 @@ import { Sidebar } from './components/Sidebar.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { DiffPane } from './components/DiffPane.js';
 import { ReviewPanel } from './components/ReviewPanel.js';
-import { FileList } from './components/FileList.js';
+import { FileList, conversationStates } from './components/FileList.js';
 import { ResizeHandle, usePanelWidth } from './components/Resizer.js';
 
 export type { Session };
@@ -431,6 +431,17 @@ export function App() {
     [patchSession],
   );
 
+  const toggleResolveComment = useCallback(
+    (session: Session, commentId: string) => {
+      patchSession(session.key, (s) => ({
+        comments: (s.comments ?? []).map((c) =>
+          c.id === commentId ? { ...c, resolved: !c.resolved, collapsed: !c.resolved } : c,
+        ),
+      }));
+    },
+    [patchSession],
+  );
+
   const deleteComment = useCallback(
     (session: Session, commentId: string) => {
       if (!window.confirm('Delete this comment thread?')) return;
@@ -519,6 +530,7 @@ export function App() {
     () => (active?.comments ?? []).filter((c) => c.file === selectedFile),
     [active?.comments, selectedFile],
   );
+  const conversationFiles = useMemo(() => conversationStates(active?.comments ?? []), [active?.comments]);
   const activeScope = active ? chatScope[active.key] : undefined;
   const activeStream = active ? streamText[active.key] ?? '' : '';
   const deltaAvailable = !!(active?.lastReviewedSha && active.headRef && active.status === 'done');
@@ -595,6 +607,7 @@ export function App() {
                 files={files}
                 selected={selectedFile}
                 flagged={flaggedFiles}
+                conversations={conversationFiles}
                 onSelect={setSelectedFile}
               />
             </nav>
@@ -614,6 +627,7 @@ export function App() {
                   }
                   onReplyComment={(comment, text) => replyComment(active, comment, text)}
                   onToggleCollapse={(comment) => toggleCollapseComment(active, comment.id)}
+                  onToggleResolve={(comment) => toggleResolveComment(active, comment.id)}
                   onDeleteComment={(comment) => deleteComment(active, comment.id)}
                   collapsedFindings={active.collapsedFindings ?? {}}
                   onToggleFinding={(f) => toggleCollapseFinding(active, f)}

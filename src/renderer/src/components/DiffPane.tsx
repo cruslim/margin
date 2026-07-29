@@ -30,6 +30,7 @@ export function DiffPane(props: {
   ) => void;
   onReplyComment: (comment: Comment, text: string) => void;
   onToggleCollapse: (comment: Comment) => void;
+  onToggleResolve: (comment: Comment) => void;
   onDeleteComment: (comment: Comment) => void;
   collapsedFindings: Record<string, boolean>;
   onToggleFinding: (f: Finding) => void;
@@ -240,6 +241,7 @@ export function DiffPane(props: {
                     }
                     onReply={(text) => props.onReplyComment(c, text)}
                     onToggleCollapse={() => props.onToggleCollapse(c)}
+                    onToggleResolve={() => props.onToggleResolve(c)}
                     onDelete={() => props.onDeleteComment(c)}
                     onApplyPatch={(patch) => props.onApplyPatch(patch, c.id)}
                   />
@@ -295,6 +297,7 @@ function CommentThread(props: {
   streaming?: string;
   onReply: (text: string) => void;
   onToggleCollapse: () => void;
+  onToggleResolve: () => void;
   onDelete: () => void;
   onApplyPatch: (patch: string) => void;
 }) {
@@ -304,11 +307,12 @@ function CommentThread(props: {
     props.streaming === undefined &&
     props.comment.messages[props.comment.messages.length - 1]?.role === 'user';
   const collapsed = !!props.comment.collapsed;
+  const resolved = !!props.comment.resolved;
 
   const head = (
     <div className="comment-head" onClick={props.onToggleCollapse} title={collapsed ? 'Expand' : 'Collapse'}>
       <span className="comment-chevron">{collapsed ? '▸' : '▾'}</span>
-      <span className="comment-title">Comment</span>
+      <span className={`comment-title ${resolved ? 'resolved' : ''}`}>{resolved ? 'Resolved' : 'Comment'}</span>
       {collapsed && (
         <span className="comment-preview">
           {props.comment.messages[0]?.text.slice(0, 80)}
@@ -323,6 +327,16 @@ function CommentThread(props: {
         {props.comment.side === 'old' ? ' (old)' : ''}
       </span>
       <button
+        className="icon-btn comment-resolve"
+        title={resolved ? 'Reopen this conversation' : 'Mark conversation as resolved'}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onToggleResolve();
+        }}
+      >
+        {resolved ? 'Unresolve' : 'Resolve'}
+      </button>
+      <button
         className="icon-btn comment-delete"
         title="Delete comment thread"
         onClick={(e) => {
@@ -336,11 +350,11 @@ function CommentThread(props: {
   );
 
   if (collapsed) {
-    return <div className="comment-thread collapsed">{head}</div>;
+    return <div className={`comment-thread collapsed ${resolved ? 'resolved' : ''}`}>{head}</div>;
   }
 
   return (
-    <div className="comment-thread">
+    <div className={`comment-thread ${resolved ? 'resolved' : ''}`}>
       {head}
       {props.comment.messages.map((m, i) => (
         <ChatBubble key={i} msg={m} onApplyPatch={props.onApplyPatch} />

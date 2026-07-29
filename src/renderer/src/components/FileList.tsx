@@ -1,7 +1,19 @@
 import { Fragment, useMemo, useState } from 'react';
-import type { ChangedFile } from '../../../shared/ipc.js';
+import type { ChangedFile, Comment } from '../../../shared/ipc.js';
 
 type ViewMode = 'list' | 'tree';
+
+export type ConvoState = 'ongoing' | 'resolved';
+
+/** Per-file conversation state: 'ongoing' if any thread is unresolved, 'resolved' if all are. */
+export function conversationStates(comments: Pick<Comment, 'file' | 'resolved'>[]): Map<string, ConvoState> {
+  const map = new Map<string, ConvoState>();
+  for (const c of comments) {
+    if (!c.resolved) map.set(c.file, 'ongoing');
+    else if (map.get(c.file) !== 'ongoing') map.set(c.file, 'resolved');
+  }
+  return map;
+}
 
 export type DirNode = {
   name: string;
@@ -62,6 +74,12 @@ const ListIcon = (
   </svg>
 );
 
+const BubbleIcon = (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M8 1.5c-3.9 0-7 2.5-7 5.7 0 1.9 1.1 3.5 2.8 4.6-.1.9-.5 1.8-1.2 2.5 1.4-.1 2.6-.6 3.6-1.4.6.1 1.2.2 1.8.2 3.9 0 7-2.6 7-5.9S11.9 1.5 8 1.5z" />
+  </svg>
+);
+
 const TreeIcon = (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
     <path d="M4.5 3v8a1.5 1.5 0 0 0 1.5 1.5h3M4.5 7.5H9" />
@@ -75,6 +93,7 @@ export function FileList(props: {
   files: ChangedFile[];
   selected: string | null;
   flagged: Set<string>;
+  conversations: Map<string, ConvoState>;
   onSelect: (path: string) => void;
 }) {
   const [mode, setMode] = useState<ViewMode>(
@@ -96,19 +115,30 @@ export function FileList(props: {
     });
   };
 
-  const fileRow = (f: ChangedFile, depth: number, label: string, rtl: boolean) => (
-    <button
-      key={f.path}
-      className={`file-item ${f.path === props.selected ? 'selected' : ''}`}
-      style={depth > 0 ? { paddingLeft: 7 + depth * 14 } : undefined}
-      title={f.path}
-      onClick={() => props.onSelect(f.path)}
-    >
-      <span className={`file-status status-${f.status}`}>{f.status}</span>
-      <span className={`file-path ${rtl ? 'rtl' : ''}`}>{label}</span>
-      {props.flagged.has(f.path) && <span className="file-flag">●</span>}
-    </button>
-  );
+  const fileRow = (f: ChangedFile, depth: number, label: string, rtl: boolean) => {
+    const convo = props.conversations.get(f.path);
+    return (
+      <button
+        key={f.path}
+        className={`file-item ${f.path === props.selected ? 'selected' : ''}`}
+        style={depth > 0 ? { paddingLeft: 7 + depth * 14 } : undefined}
+        title={f.path}
+        onClick={() => props.onSelect(f.path)}
+      >
+        <span className={`file-status status-${f.status}`}>{f.status}</span>
+        <span className={`file-path ${rtl ? 'rtl' : ''}`}>{label}</span>
+        {convo && (
+          <span
+            className={`file-convo ${convo}`}
+            title={convo === 'ongoing' ? 'Ongoing conversation' : 'All conversations resolved'}
+          >
+            {BubbleIcon}
+          </span>
+        )}
+        {props.flagged.has(f.path) && <span className="file-flag">●</span>}
+      </button>
+    );
+  };
 
   const renderDir = (node: DirNode, depth: number): React.ReactNode => (
     <>

@@ -146,8 +146,11 @@ export interface MarginApi {
   saveRepoInstructions(repoPath: string, text: string): Promise<void>;
   /** Ensure a workdir exists for a session (temp worktree for branch reviews) before any review ran. */
   prepareWorkdir(target: ReviewTarget): Promise<string>;
-  /** Apply a unified diff to the repo's working copy. Runs `git apply --check` first. */
-  applyPatch(repoPath: string, patch: string): Promise<{ ok: boolean; error?: string }>;
+  /**
+   * Apply a unified diff to the repo's working copy. Runs `git apply --check` first,
+   * retrying with lenient matching; `note` says when a lenient level was needed.
+   */
+  applyPatch(repoPath: string, patch: string): Promise<{ ok: boolean; error?: string; note?: string }>;
   getSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
   loadState(): Promise<PersistedState>;

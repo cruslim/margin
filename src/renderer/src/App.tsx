@@ -321,7 +321,9 @@ export function App() {
         session.key,
         {
           role: 'assistant',
-          text: res.ok ? '✔ Patch applied to the working copy.' : `✘ git apply failed:\n${res.error}`,
+          text: res.ok
+            ? `✔ Patch applied to the working copy.${res.note ? ` (${res.note})` : ''}`
+            : `✘ git apply failed:\n${res.error}`,
           at: Date.now(),
         },
         findingIndex,
@@ -345,7 +347,9 @@ export function App() {
       const res = await window.margin.applyPatch(session.repoPath, patch);
       appendToComment(session.key, commentId, {
         role: 'assistant',
-        text: res.ok ? '✔ Patch applied to the working copy.' : `✘ git apply failed:\n${res.error}`,
+        text: res.ok
+          ? `✔ Patch applied to the working copy.${res.note ? ` (${res.note})` : ''}`
+          : `✘ git apply failed:\n${res.error}`,
         at: Date.now(),
       });
     },

@@ -74,20 +74,40 @@ async function showFile(repoPath: string, ref: string, path: string): Promise<st
  * Apply an AI-proposed patch to the user's working copy. `--check` first so a
  * patch that doesn't fit the current working tree fails cleanly with git's
  * explanation instead of half-applying.
+ *
+ * AI-generated diffs routinely miscount hunk-header totals (--recount, always
+ * on) and drift from the real file in their context lines (reflowed prose,
+ * whitespace) — so failed applies retry with increasingly lenient matching.
+ * Every level still --checks the whole patch first, so nothing half-applies;
+ * `note` reports when a lenient level was needed.
  */
-export async function applyPatch(repoPath: string, patch: string): Promise<{ ok: boolean; error?: string }> {
+export async function applyPatch(
+  repoPath: string,
+  patch: string,
+): Promise<{ ok: boolean; error?: string; note?: string }> {
   const dir = await mkdtemp(join(tmpdir(), 'margin-patch-'));
   const file = join(dir, 'proposed.patch');
+  const attempts: { note?: string; flags: string[] }[] = [
+    { flags: [] },
+    { note: 'ignored whitespace differences', flags: ['--ignore-space-change', '--whitespace=nowarn'] },
+    // -C1: anchor each hunk on 1 matching context line per side instead of 3.
+    { note: 'matched with reduced context', flags: ['--ignore-space-change', '--whitespace=nowarn', '-C1'] },
+  ];
   try {
     await writeFile(file, patch.endsWith('\n') ? patch : patch + '\n');
-    // --recount: AI-generated diffs routinely miscount hunk-header line totals;
-    // let git recount from the hunk body instead of rejecting the patch.
-    await git(repoPath, ['apply', '--check', '--recount', file]);
-    await git(repoPath, ['apply', '--recount', file]);
-    return { ok: true };
-  } catch (err) {
-    const e = err as { stderr?: string; message?: string };
-    return { ok: false, error: (e.stderr || e.message || String(err)).trim() };
+    let firstError: string | undefined;
+    for (const attempt of attempts) {
+      try {
+        await git(repoPath, ['apply', '--check', '--recount', ...attempt.flags, file]);
+        await git(repoPath, ['apply', '--recount', ...attempt.flags, file]);
+        return { ok: true, note: attempt.note };
+      } catch (err) {
+        const e = err as { stderr?: string; message?: string };
+        // The exact-match error names the first mismatched hunk — most useful.
+        firstError ??= (e.stderr || e.message || String(err)).trim();
+      }
+    }
+    return { ok: false, error: firstError };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }

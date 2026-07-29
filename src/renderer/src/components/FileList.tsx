@@ -58,9 +58,16 @@ function collapseChains(node: DirNode) {
   }
 }
 
+/** Hand-written files first, then generated output; alphabetical within each group. */
+export function orderFiles(files: ChangedFile[]): ChangedFile[] {
+  return [...files].sort(
+    (a, b) => Number(!!a.generated) - Number(!!b.generated) || a.path.localeCompare(b.path),
+  );
+}
+
 function sortTree(node: DirNode) {
   node.dirs.sort((a, b) => a.name.localeCompare(b.name));
-  node.files.sort((a, b) => a.path.localeCompare(b.path));
+  node.files = orderFiles(node.files);
   for (const dir of node.dirs) sortTree(dir);
 }
 
@@ -89,6 +96,9 @@ const TreeIcon = (
   </svg>
 );
 
+/** Marks a file as machine-generated. Also used in the diff toolbar. */
+export const GenBadge = () => <span className="file-gen">auto-generated</span>;
+
 export function FileList(props: {
   files: ChangedFile[];
   selected: string | null;
@@ -101,6 +111,7 @@ export function FileList(props: {
   );
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const tree = useMemo(() => buildTree(props.files), [props.files]);
+  const ordered = useMemo(() => orderFiles(props.files), [props.files]);
 
   const setView = (m: ViewMode) => {
     setMode(m);
@@ -120,13 +131,14 @@ export function FileList(props: {
     return (
       <button
         key={f.path}
-        className={`file-item ${f.path === props.selected ? 'selected' : ''}`}
+        className={`file-item ${f.path === props.selected ? 'selected' : ''} ${f.generated ? 'generated' : ''}`}
         style={depth > 0 ? { paddingLeft: 7 + depth * 14 } : undefined}
-        title={f.path}
+        title={f.generated ? `${f.path} (auto-generated)` : f.path}
         onClick={() => props.onSelect(f.path)}
       >
         <span className={`file-status status-${f.status}`}>{f.status}</span>
         <span className={`file-path ${rtl ? 'rtl' : ''}`}>{label}</span>
+        {f.generated && <GenBadge />}
         {convo && (
           <span
             className={`file-convo ${convo}`}
@@ -189,7 +201,7 @@ export function FileList(props: {
       <div className="filelist-items">
         {mode === 'tree'
           ? renderDir(tree, 0)
-          : props.files.map((f) => fileRow(f, 0, f.path, true))}
+          : ordered.map((f) => fileRow(f, 0, f.path, true))}
         {props.files.length === 0 && <div className="empty-note">No changed files</div>}
       </div>
     </>

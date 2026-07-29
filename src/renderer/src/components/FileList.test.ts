@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildTree, conversationStates } from './FileList.js';
+import { buildTree, conversationStates, orderFiles } from './FileList.js';
 import type { ChangedFile } from '../../../shared/ipc.js';
 
 const f = (path: string): ChangedFile => ({ path, status: 'M' }) as ChangedFile;
+const gen = (path: string): ChangedFile => ({ path, status: 'M', generated: true }) as ChangedFile;
 
 describe('buildTree', () => {
   it('puts root-level files on the root node', () => {
@@ -42,6 +43,24 @@ describe('buildTree', () => {
     const root = buildTree([f('z.ts'), f('a.ts'), f('b/x.ts'), f('a2/y.ts')]);
     expect(root.dirs.map((d) => d.name)).toEqual(['a2', 'b']);
     expect(root.files.map((x) => x.path)).toEqual(['a.ts', 'z.ts']);
+  });
+
+  it('sinks generated files below their hand-written siblings', () => {
+    const root = buildTree([gen('a-lock.json'), f('z.ts'), gen('b.gen.ts'), f('m.ts')]);
+    expect(root.files.map((x) => x.path)).toEqual(['m.ts', 'z.ts', 'a-lock.json', 'b.gen.ts']);
+  });
+});
+
+describe('orderFiles', () => {
+  it('puts generated last, alphabetical within each group', () => {
+    const ordered = orderFiles([gen('dist/a.js'), f('src/z.ts'), gen('b.snap'), f('src/a.ts')]);
+    expect(ordered.map((x) => x.path)).toEqual(['src/a.ts', 'src/z.ts', 'b.snap', 'dist/a.js']);
+  });
+
+  it('does not mutate its input', () => {
+    const files = [gen('lock.json'), f('a.ts')];
+    orderFiles(files);
+    expect(files.map((x) => x.path)).toEqual(['lock.json', 'a.ts']);
   });
 });
 

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { generatedFilesNote } from '../shared/generated.js';
 import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
 import type { Finding, ReviewOptions, ReviewTarget } from './types.js';
 import { parseReviewOutput } from './review.js';
@@ -94,6 +95,7 @@ export async function runBasicReview(
         opts.dismissed.map((d) => `- ${d.file} [${d.category}]: ${d.summary}`).join('\n') +
         '\n\n';
     }
+    preamble += generatedFilesNote(diff);
 
     const user = `${preamble}${outputInstructions()}
 

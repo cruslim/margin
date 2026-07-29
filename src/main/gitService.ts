@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
+import { hasGeneratedMarker, isGeneratedPath } from '../shared/generated.js';
 import type { ChangedFile, FileDiff, RepoInfo } from '../shared/ipc.js';
 import type { ReviewTarget } from '../engine/types.js';
 import { untrackedFileDiff, untrackedPaths } from '../engine/worktree.js';
@@ -52,7 +53,38 @@ export async function changedFiles(target: ReviewTarget): Promise<ChangedFile[]>
     for (const p of await untrackedPaths(target.repoPath)) files.push({ path: p, status: 'A' });
     files.sort((a, b) => a.path.localeCompare(b.path));
   }
+  // After the untracked pass, so a brand-new generated file gets flagged too.
+  await markGenerated(target, files);
   return files;
+}
+
+/** Files to sniff before giving up and going on path patterns alone. */
+const SNIFF_LIMIT = 200;
+const SNIFF_CHUNK = 8;
+/** Enough to cover any file header; keeps a lockfile out of memory. */
+const HEAD_BYTES = 4096;
+
+/**
+ * Set `generated` on each file. Path patterns cost nothing; anything they miss
+ * needs the head of the new content, which is one read per file — so the sniff
+ * is skipped for deleted files and for changesets too large to sniff cheaply.
+ */
+async function markGenerated(target: ReviewTarget, files: ChangedFile[]): Promise<void> {
+  const needSniff: ChangedFile[] = [];
+  for (const f of files) {
+    if (isGeneratedPath(f.path)) f.generated = true;
+    else if (f.status !== 'D' && files.length <= SNIFF_LIMIT) needSniff.push(f);
+  }
+  for (let i = 0; i < needSniff.length; i += SNIFF_CHUNK) {
+    await Promise.all(
+      needSniff.slice(i, i + SNIFF_CHUNK).map(async (f) => {
+        const content = target.headRef
+          ? await showFile(target.repoPath, target.headRef, f.path)
+          : await readFile(join(target.repoPath, f.path), 'utf8').catch(() => '');
+        if (hasGeneratedMarker(content.slice(0, HEAD_BYTES))) f.generated = true;
+      }),
+    );
+  }
 }
 
 const LANG_BY_EXT: Record<string, string> = {

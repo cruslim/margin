@@ -1,4 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { generatedFilesNote } from '../shared/generated.js';
 import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
 import type { Finding, ReviewOptions, ReviewResult, ReviewTarget, TokenUsage } from './types.js';
 import { branchDiff, createWorktree, resolveSha, workingTreeDiff } from './worktree.js';
@@ -28,6 +29,7 @@ function reviewPrompt(diff: string, opts: ReviewOptions, projectInstructions: st
       opts.dismissed.map((d) => `- ${d.file} [${d.category}]: ${d.summary}`).join('\n') +
       '\n\n';
   }
+  preamble += generatedFilesNote(diff);
   return `${preamble}Review the following diff. Explore the repository (Read/Grep/Glob) as needed to verify each suspicion before reporting it.
 
 When you are done, output ONLY a JSON object (no prose before or after, no code fence) with this shape:

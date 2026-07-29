@@ -67,7 +67,7 @@ npm run chat -- "Propose a fix for finding 1"
   <repo-name>-<hash>/          # hash of repo path, so same-named repos don't collide
     repo.json                  # repo path, name, branches
     dismissals.json            # findings dismissed in this repo (never re-reported)
-    instructions.md            # your app-stored review instructions for this repo
+    instructions.md            # custom review instructions for this repo (optional, user-editable)
     <branch-slug>/             # one folder per reviewed branch ("working-tree" for uncommitted)
       session-<key>.json       # findings, summary, model, token usage, cost, transcript
 ```

@@ -15,7 +15,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 - **Verifier pass** — an agentic session cross-examines every finding against the code and marks it verified/refuted/uncertain with reasons
 - **Delta re-reviews** — "Review new changes" covers only commits since the last review
 - **Dismissal memory** — dismissed findings are hidden and never re-reported (per-repo `dismissals.json`, restorable)
-- **Per-repo instructions** — a `.margin.md` in the repo root is injected into every review
+- **Per-repo instructions** — your own rules per repository, edited in the app (✎ on the repo row) and stored app-side, so the repo stays clean and they're deleted with the repo; a committed `.margin/margin.md` works too for team-shared rules. Both are injected into every review and into comment threads started before a review
 - **Model picker** — per-session default/fable/opus/sonnet/haiku for reviews and chat
 
 ## Requirements
@@ -66,6 +66,8 @@ npm run chat -- "Propose a fix for finding 1"
 ~/Library/Application Support/margin/reviews/
   <repo-name>-<hash>/          # hash of repo path, so same-named repos don't collide
     repo.json                  # repo path, name, branches
+    dismissals.json            # findings dismissed in this repo (never re-reported)
+    instructions.md            # custom review instructions for this repo (optional, user-editable)
     <branch-slug>/             # one folder per reviewed branch ("working-tree" for uncommitted)
       session-<key>.json       # findings, summary, model, token usage, cost, transcript
 ```

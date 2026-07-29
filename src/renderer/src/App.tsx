@@ -18,6 +18,7 @@ export function dismissalKey(d: Pick<DismissedFinding, 'file' | 'category' | 'su
 }
 import { Sidebar } from './components/Sidebar.js';
 import { SettingsModal } from './components/SettingsModal.js';
+import { InstructionsModal } from './components/InstructionsModal.js';
 import { DiffPane } from './components/DiffPane.js';
 import { ReviewPanel } from './components/ReviewPanel.js';
 import { FileList, conversationStates } from './components/FileList.js';
@@ -44,6 +45,7 @@ export function App() {
   const [chatScope, setChatScope] = useState<Record<string, ChatScope>>({});
   const [dismissals, setDismissals] = useState<Record<string, DismissedFinding[]>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [instructionsRepo, setInstructionsRepo] = useState<RepoInfo | null>(null);
   const loaded = useRef(false);
 
   const sidebarPanel = usePanelWidth('sidebar', 230, 160, 480, 1);
@@ -319,7 +321,9 @@ export function App() {
         session.key,
         {
           role: 'assistant',
-          text: res.ok ? '✔ Patch applied to the working copy.' : `✘ git apply failed:\n${res.error}`,
+          text: res.ok
+            ? `✔ Patch applied to the working copy.${res.note ? ` (${res.note})` : ''}`
+            : `✘ git apply failed:\n${res.error}`,
           at: Date.now(),
         },
         findingIndex,
@@ -343,7 +347,9 @@ export function App() {
       const res = await window.margin.applyPatch(session.repoPath, patch);
       appendToComment(session.key, commentId, {
         role: 'assistant',
-        text: res.ok ? '✔ Patch applied to the working copy.' : `✘ git apply failed:\n${res.error}`,
+        text: res.ok
+          ? `✔ Patch applied to the working copy.${res.note ? ` (${res.note})` : ''}`
+          : `✘ git apply failed:\n${res.error}`,
         at: Date.now(),
       });
     },
@@ -361,6 +367,7 @@ export function App() {
         const workDir = session.workDir ?? (await window.margin.prepareWorkdir(targetOf(session)));
         const reply = await window.margin.sendChat(session.key, session.sdkSessionId ?? null, workDir, prompt, {
           model: session.modelChoice,
+          repoPath: session.repoPath,
         });
         patchSession(session.key, (s) => ({
           sdkSessionId: reply.sessionId,
@@ -548,6 +555,7 @@ export function App() {
         onDeleteSession={deleteSession}
         onRemoveRepo={removeRepo}
         onRefreshRepo={refreshRepo}
+        onEditInstructions={setInstructionsRepo}
         onOpenSettings={() => {
           console.log('[margin] settings opened via gear click');
           setSettingsOpen(true);
@@ -555,6 +563,7 @@ export function App() {
       />
       <ResizeHandle onMouseDown={sidebarPanel.startDrag} />
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {instructionsRepo && <InstructionsModal repo={instructionsRepo} onClose={() => setInstructionsRepo(null)} />}
       {active ? (
         <main className="main">
           <header className="topbar">

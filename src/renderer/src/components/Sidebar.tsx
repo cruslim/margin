@@ -22,6 +22,7 @@ export function Sidebar(props: {
   onDeleteSession: (key: string) => void;
   onRemoveRepo: (path: string) => void;
   onRefreshRepo: (path: string) => Promise<void>;
+  onEditInstructions: (repo: RepoInfo) => void;
   onOpenSettings: () => void;
 }) {
   const [formRepo, setFormRepo] = useState<string | null>(null);
@@ -53,6 +54,13 @@ export function Sidebar(props: {
                   onClick={() => props.onRemoveRepo(repo.path)}
                 >
                   ✕
+                </button>
+                <button
+                  className="icon-btn"
+                  title="Review instructions for this repo"
+                  onClick={() => props.onEditInstructions(repo)}
+                >
+                  ✎
                 </button>
                 <button
                   className={`icon-btn ${refreshing === repo.path ? 'spinning' : ''}`}

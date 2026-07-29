@@ -56,6 +56,8 @@ export interface ReviewOptions {
   sinceSha?: string;
   /** Previously dismissed findings — the reviewer is told not to report them again. */
   dismissed?: DismissedFinding[];
+  /** User's per-repo instructions stored in the app, merged with the repo's .margin/margin.md. */
+  instructions?: string;
 }
 
 export interface ReviewResult {

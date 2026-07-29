@@ -302,6 +302,19 @@ body.resizing * { pointer-events: none; }
 .file-convo { display: inline-flex; flex-shrink: 0; }
 .file-convo.ongoing { color: var(--accent); }
 .file-convo.resolved { color: var(--ok); }
+/* Auto-generated output: muted badge, and the row itself recedes. */
+.file-gen {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 4px;
+}
+.file-item.generated .file-path { color: var(--text-dim); }
+.file-item.generated .file-status { opacity: 0.55; }
 .dir-row { color: var(--text-dim); }
 .dir-row:hover { color: var(--text); }
 .dir-chevron { font-size: 10px; width: 11px; flex-shrink: 0; text-align: center; }

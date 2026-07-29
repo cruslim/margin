@@ -15,7 +15,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 - **Verifier pass** — an agentic session cross-examines every finding against the code and marks it verified/refuted/uncertain with reasons
 - **Delta re-reviews** — "Review new changes" covers only commits since the last review
 - **Dismissal memory** — dismissed findings are hidden and never re-reported (per-repo `dismissals.json`, restorable)
-- **Generated files stay out of the way** — lockfiles, build output, snapshots, codegen and `@generated` headers are tagged `gen`, dimmed and sorted last, and the reviewers are told not to report findings in them
+- **Generated files stay out of the way** — lockfiles, build output, snapshots, codegen, static-analysis baselines (mago/phpstan/psalm) and `@generated` banners are tagged `gen`, dimmed and sorted last, and the reviewers are told not to report findings in them
 - **Per-repo instructions** — your own rules per repository, edited in the app (✎ on the repo row) and stored app-side, so the repo stays clean and they're deleted with the repo; a committed `.margin/margin.md` works too for team-shared rules. Both are injected into every review and into comment threads started before a review
 - **Model picker** — per-session default/fable/opus/sonnet/haiku for reviews and chat
 

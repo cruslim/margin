@@ -15,15 +15,24 @@ const GENERATED_PATHS: RegExp[] = [
   /(^|\/)__snapshots__\//,
   /\.snap$/,
   /\.generated\.|\.gen\./,
+  // Static-analysis baselines: mago, phpstan, psalm, rubocop. Tool output with
+  // no header comment. The `-baseline` prefix requirement keeps a hand-written
+  // `baseline.yml` out of it.
+  /(^|\/)[\w.-]*[-_]baseline\.(toml|neon|xml|ya?ml|json|php)$/i,
+  /(^|\/)\.rubocop_todo\.ya?ml$/,
 ];
 
 const MARKER = /@generated\b|\bDO NOT EDIT\b/i;
 
 /**
- * A marker only counts on a comment line. Code that merely mentions the marker
- * — a linter, a codegen config, this very file — is hand-written.
+ * A marker only counts in the file's leading comment block. Code that merely
+ * mentions the marker — a linter, a codegen config emitting its own banner,
+ * this very file — is hand-written.
  */
 const COMMENT_LINE = /^\s*(\/\/|\/\*|\*|#|--|;|%|<!--|""")/;
+/** Openers that legitimately sit above a generated banner. */
+const PREAMBLE_LINE = /^\s*(<\?php|<\?xml|<!DOCTYPE|---)/i;
+const BLANK_LINE = /^\s*$/;
 
 /** How many leading lines of a file count as its header for marker purposes. */
 const HEADER_LINES = 20;
@@ -33,12 +42,20 @@ export function isGeneratedPath(path: string): boolean {
 }
 
 /**
- * True when the text carries a generator marker in a header comment. Header-only
- * on purpose: a "do not edit this by hand" note buried mid-file is a comment
- * about one function, not a claim about the whole file.
+ * True when the text opens with a generator banner. The marker has to sit in the
+ * leading comment block: further down it's a note about one block, not a claim
+ * about the file, and inside real code it's usually a tool talking *about*
+ * generated output.
  */
 export function hasGeneratedMarker(text: string): boolean {
-  return text.split('\n', HEADER_LINES).some((line) => COMMENT_LINE.test(line) && MARKER.test(line));
+  for (const line of text.split('\n', HEADER_LINES)) {
+    if (COMMENT_LINE.test(line)) {
+      if (MARKER.test(line)) return true;
+    } else if (!BLANK_LINE.test(line) && !PREAMBLE_LINE.test(line)) {
+      return false; // real code started — no banner above it
+    }
+  }
+  return false;
 }
 
 /** Path patterns, falling back to a marker sniff when the file's head is available. */

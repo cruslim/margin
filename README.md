@@ -1,12 +1,15 @@
 # Margin
 
+[![CI](https://github.com/cruslim/margin/actions/workflows/ci.yml/badge.svg)](https://github.com/cruslim/margin/actions/workflows/ci.yml)
+
 Local AI code review with chat. Review branches and uncommitted changes before they leave your machine — nothing is ever pushed or posted anywhere; the only network traffic is the model API calls made through your existing `claude` login (plus any extra finders you configure).
 
 ## Features
 
-- **Reviews of local refs** — pick a branch (vs any base) or your uncommitted working tree; no remote, no PR required
-- **Split/unified diff viewer** with inline finding cards anchored to file/line
-- **Chat** — general session chat, per-finding threads, and GitHub-style line-anchored comment threads (hover a diff line, click +; works even before a review runs), all streamed live
+- **Reviews of local refs** — pick a branch (searchable, sorted by latest commit) vs any base, or your uncommitted working tree; no remote, no PR required
+- **Split/unified diff viewer** with inline finding cards anchored to file/line, and a file list (tree or flat) with per-file finding and conversation indicators
+- **Chat** — general session chat, per-finding threads, and GitHub-style line-anchored comment threads (hover a diff line, click +; works even before a review runs), all streamed live with copyable replies
+- **Resolvable conversations** — mark a comment thread resolved to collapse it; the file list shows which files have ongoing (blue) vs fully resolved (green) conversations
 - **Propose fix** — the agent replies with a unified diff; applying it always shows the patch and asks first (`git apply --recount`)
 - **Multi-model finders** — an OpenAI-compatible endpoint (GPT/Ollama/OpenRouter) and the CodeRabbit CLI can run in parallel with the Claude reviewer; findings are source-tagged with a per-reviewer Agent-log filter
 - **Verifier pass** — an agentic session cross-examines every finding against the code and marks it verified/refuted/uncertain with reasons
@@ -29,7 +32,15 @@ npm run package        # builds dist/mac-arm64/Margin.app (unsigned, local use)
 ditto dist/mac-arm64/Margin.app ~/Applications/Margin.app
 ```
 
-Or for development: `npm run dev`.
+## Development
+
+```sh
+npm run dev        # run the app with hot reload
+npm test           # unit tests (vitest)
+npm run typecheck  # tsc --noEmit
+```
+
+CI runs typecheck, tests, and a build on every PR and push to master.
 
 ## Try the engine from the CLI
 

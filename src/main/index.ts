@@ -145,6 +145,7 @@ app.whenReady().then(() => {
   ipcMain.handle('review:run', async (event, sessionKey: string, target: ReviewTarget, opts?: { model?: string; sinceSha?: string }) => {
     const sender = event.sender;
     const dismissed = await storage.listDismissals(target.repoPath);
+    const instructions = await storage.getRepoInstructions(target.repoPath);
     const settings = await storage.loadSettings();
     const progress = (line: string) => {
       if (!sender.isDestroyed()) sender.send('review:progress', sessionKey, line);
@@ -157,7 +158,7 @@ app.whenReady().then(() => {
       const finderNames: string[] = [];
       if (settings.openai.enabled && settings.openai.model) {
         finderNames.push(settings.openai.model);
-        extraFinders.push(runBasicReview(target, settings.openai, { ...opts, dismissed }, progress));
+        extraFinders.push(runBasicReview(target, settings.openai, { ...opts, dismissed, instructions }, progress));
       }
       if (settings.coderabbit.enabled) {
         finderNames.push('coderabbit');
@@ -165,7 +166,7 @@ app.whenReady().then(() => {
       }
 
       const [main, extras] = await Promise.all([
-        runReview(target, { onProgress: progress }, { ...opts, dismissed }),
+        runReview(target, { onProgress: progress }, { ...opts, dismissed, instructions }),
         Promise.allSettled(extraFinders),
       ]);
 
@@ -230,8 +231,10 @@ app.whenReady().then(() => {
   );
 
   let midstreamCaptured = false;
-  ipcMain.handle('chat:send', async (event, sessionKey: string, sdkSessionId: string | null, workDir: string, message: string, opts?: { model?: string }) => {
+  ipcMain.handle('chat:send', async (event, sessionKey: string, sdkSessionId: string | null, workDir: string, message: string, opts?: { model?: string; repoPath?: string }) => {
     const sender = event.sender;
+    // App-stored instructions key off the real repo path (workDir may be a temp worktree).
+    const instructions = opts?.repoPath ? await storage.getRepoInstructions(opts.repoPath) : '';
     try {
       return await chat(
         sdkSessionId,
@@ -250,7 +253,7 @@ app.whenReady().then(() => {
             }
           },
         },
-        opts ?? {},
+        { model: opts?.model, instructions },
       );
     } finally {
       if (process.env.MARGIN_SMOKE_CHAT || process.env.MARGIN_SMOKE_COMMENT) {
@@ -273,6 +276,9 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('patch:apply', (_e, repoPath: string, patch: string) => applyPatch(repoPath, patch));
+
+  ipcMain.handle('instructions:get', (_e, repoPath: string) => storage.getRepoInstructions(repoPath));
+  ipcMain.handle('instructions:save', (_e, repoPath: string, text: string) => storage.saveRepoInstructions(repoPath, text));
 
   ipcMain.handle('dismissals:list', (_e, repoPath: string) => storage.listDismissals(repoPath));
   ipcMain.handle('dismissals:add', (_e, repoPath: string, d: DismissedFinding) => storage.addDismissal(repoPath, d));

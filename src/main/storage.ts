@@ -109,6 +109,28 @@ export async function removeDismissal(repoPath: string, key: string): Promise<Di
   return all;
 }
 
+function instructionsFile(repoPath: string): string {
+  return join(reviewsRoot(), repoSlug(repoPath), 'instructions.md');
+}
+
+/** User's own review instructions for a repo — stored app-side, removed with the repo's data. */
+export async function getRepoInstructions(repoPath: string): Promise<string> {
+  try {
+    return await readFile(instructionsFile(repoPath), 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+export async function saveRepoInstructions(repoPath: string, text: string): Promise<void> {
+  if (!text.trim()) {
+    await rm(instructionsFile(repoPath), { force: true });
+    return;
+  }
+  await mkdir(join(reviewsRoot(), repoSlug(repoPath)), { recursive: true });
+  await writeFile(instructionsFile(repoPath), text);
+}
+
 export async function removeRepoData(repoPath: string): Promise<void> {
   await rm(join(reviewsRoot(), repoSlug(repoPath)), { recursive: true, force: true });
 }

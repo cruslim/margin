@@ -1,6 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
 import type { Finding, ReviewOptions, ReviewResult, ReviewTarget, TokenUsage } from './types.js';
 import { branchDiff, createWorktree, resolveSha, workingTreeDiff } from './worktree.js';
 
@@ -21,7 +20,7 @@ function reviewPrompt(diff: string, opts: ReviewOptions, projectInstructions: st
       'This is an INCREMENTAL review: the diff below contains only changes made since your previous review of this branch. Review just these new changes.\n\n';
   }
   if (projectInstructions.trim()) {
-    preamble += `Project-specific review instructions (from .margin.md — follow these):\n${projectInstructions.trim()}\n\n`;
+    preamble += `Project-specific review instructions (follow these):\n${projectInstructions.trim()}\n\n`;
   }
   if (opts.dismissed?.length) {
     preamble +=
@@ -84,7 +83,7 @@ export async function runReview(
     );
   }
 
-  const projectInstructions = await readFile(join(workDir, '.margin.md'), 'utf8').catch(() => '');
+  const projectInstructions = mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
 
   let sessionId = '';
   let resultText = '';

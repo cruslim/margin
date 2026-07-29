@@ -19,6 +19,8 @@ const api: MarginApi = {
   sendChat: (sessionKey, sdkSessionId, workDir, message, opts) =>
     ipcRenderer.invoke('chat:send', sessionKey, sdkSessionId, workDir, message, opts),
   applyPatch: (repoPath, patch) => ipcRenderer.invoke('patch:apply', repoPath, patch),
+  getRepoInstructions: (repoPath) => ipcRenderer.invoke('instructions:get', repoPath),
+  saveRepoInstructions: (repoPath, text) => ipcRenderer.invoke('instructions:save', repoPath, text),
   prepareWorkdir: (target) => ipcRenderer.invoke('workdir:prepare', target),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),

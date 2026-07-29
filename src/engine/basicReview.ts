@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
 import type { Finding, ReviewOptions, ReviewTarget } from './types.js';
 import { parseReviewOutput } from './review.js';
 import { branchDiff, createWorktree, removeWorktree, workingTreeDiff, changedPaths } from './worktree.js';
@@ -82,7 +83,7 @@ export async function runBasicReview(
       fileSections.push(`--- ${p} ---\n${clipped}`);
     }
 
-    const projectInstructions = await readFile(join(workDir, '.margin.md'), 'utf8').catch(() => '');
+    const projectInstructions = mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
     let preamble = '';
     if (projectInstructions.trim()) {
       preamble += `Project-specific review instructions (follow these):\n${projectInstructions.trim()}\n\n`;

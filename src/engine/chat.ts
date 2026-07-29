@@ -1,6 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
 
 export interface ChatReply {
   sessionId: string;
@@ -16,14 +15,16 @@ export interface ChatEvents {
 
 export interface ChatOptions {
   model?: string;
+  /** User's app-stored per-repo instructions — only used when starting a fresh session. */
+  instructions?: string;
 }
 
 const FRESH_SESSION_PROMPT = `You are Margin, a code review assistant. You are answering questions about a changeset inside a checkout of the repository. Explore with Read/Grep/Glob to ground your answers in the actual code. Be concise and concrete.`;
 
-/** System prompt for a fresh (non-resumed) session, with .margin.md instructions appended when present. */
+/** System prompt for a fresh (non-resumed) session, with project instructions appended when present. */
 export function freshSessionPrompt(projectInstructions: string): string {
   if (!projectInstructions.trim()) return FRESH_SESSION_PROMPT;
-  return `${FRESH_SESSION_PROMPT}\n\nProject-specific instructions (from .margin.md — follow these):\n${projectInstructions.trim()}`;
+  return `${FRESH_SESSION_PROMPT}\n\nProject-specific instructions (follow these):\n${projectInstructions.trim()}`;
 }
 
 /**
@@ -42,11 +43,11 @@ export async function chat(
   let text = '';
   let costUsd: number | null = null;
 
-  // Resumed review sessions already saw .margin.md in the review prompt; fresh
-  // sessions (commenting before any review ran) need it injected here.
+  // Resumed review sessions already saw the project instructions in the review
+  // prompt; fresh sessions (commenting before any review ran) need them here.
   const projectInstructions = sessionId
     ? ''
-    : await readFile(join(workDir, '.margin.md'), 'utf8').catch(() => '');
+    : mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
 
   const stream = query({
     prompt: message,

@@ -130,14 +130,20 @@ export interface MarginApi {
   removeDismissal(repoPath: string, key: string): Promise<DismissedFinding[]>;
   /** Remove a session's temp worktree when the session is deleted. */
   cleanupWorktree(repoPath: string, workDir: string): Promise<void>;
-  /** Send a chat turn. Resumes sdkSessionId, or starts a fresh session in workDir when null. */
+  /**
+   * Send a chat turn. Resumes sdkSessionId, or starts a fresh session in workDir when null.
+   * Pass repoPath so fresh sessions pick up the app-stored per-repo instructions.
+   */
   sendChat(
     sessionKey: string,
     sdkSessionId: string | null,
     workDir: string,
     message: string,
-    opts?: { model?: string },
+    opts?: { model?: string; repoPath?: string },
   ): Promise<ChatReply>;
+  /** User's app-stored review instructions for a repo (merged with the repo's committed .margin/margin.md). */
+  getRepoInstructions(repoPath: string): Promise<string>;
+  saveRepoInstructions(repoPath: string, text: string): Promise<void>;
   /** Ensure a workdir exists for a session (temp worktree for branch reviews) before any review ran. */
   prepareWorkdir(target: ReviewTarget): Promise<string>;
   /** Apply a unified diff to the repo's working copy. Runs `git apply --check` first. */

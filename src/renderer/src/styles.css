@@ -696,6 +696,21 @@ td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
 }
 .settings-fields input:focus { outline: 1px solid var(--accent); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.instructions-input {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.instructions-input:focus { outline: 1px solid var(--accent); }
 
 .empty-note { color: var(--text-dim); font-size: 12px; padding: 12px; text-align: center; }
 .empty-note.ok { color: var(--ok); }

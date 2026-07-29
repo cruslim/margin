@@ -17,7 +17,13 @@ const GENERATED_PATHS: RegExp[] = [
   /\.generated\.|\.gen\./,
 ];
 
-const MARKER = /@generated|DO NOT EDIT/i;
+const MARKER = /@generated\b|\bDO NOT EDIT\b/i;
+
+/**
+ * A marker only counts on a comment line. Code that merely mentions the marker
+ * — a linter, a codegen config, this very file — is hand-written.
+ */
+const COMMENT_LINE = /^\s*(\/\/|\/\*|\*|#|--|;|%|<!--|""")/;
 
 /** How many leading lines of a file count as its header for marker purposes. */
 const HEADER_LINES = 20;
@@ -27,15 +33,58 @@ export function isGeneratedPath(path: string): boolean {
 }
 
 /**
- * True when the text carries a generator marker in its header. Header-only on
- * purpose: a "do not edit this by hand" note buried mid-file is a comment about
- * one function, not a claim about the whole file.
+ * True when the text carries a generator marker in a header comment. Header-only
+ * on purpose: a "do not edit this by hand" note buried mid-file is a comment
+ * about one function, not a claim about the whole file.
  */
 export function hasGeneratedMarker(text: string): boolean {
-  return MARKER.test(text.split('\n', HEADER_LINES).join('\n'));
+  return text.split('\n', HEADER_LINES).some((line) => COMMENT_LINE.test(line) && MARKER.test(line));
 }
 
 /** Path patterns, falling back to a marker sniff when the file's head is available. */
 export function isGenerated(path: string, head?: string): boolean {
   return isGeneratedPath(path) || (head !== undefined && hasGeneratedMarker(head));
+}
+
+/**
+ * Generated files in a unified diff, in diff order. The marker sniff only reads
+ * hunks that start at line 1 of the new file — elsewhere in the diff a
+ * "DO NOT EDIT" line is a comment about one block, not a file-level claim.
+ */
+export function generatedInDiff(diff: string): string[] {
+  const found: string[] = [];
+  let path: string | null = null;
+  let header: string[] | null = null;
+
+  const flush = () => {
+    if (path && isGenerated(path, header?.join('\n'))) found.push(path);
+    path = null;
+    header = null;
+  };
+
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+++ ')) {
+      flush();
+      const target = line.slice(4).trim();
+      path = target === '/dev/null' ? null : target.replace(/^b\//, '');
+    } else if (line.startsWith('@@')) {
+      // Only the hunk covering the new file's first line can hold its header.
+      header = /\+1(,|\s)/.test(line) ? [] : null;
+    } else if (header && header.length < HEADER_LINES && /^[+ ]/.test(line)) {
+      header.push(line.slice(1));
+    }
+  }
+  flush();
+  return found;
+}
+
+/** Prompt fragment telling a reviewer to leave generated output alone. */
+export function generatedFilesNote(diff: string): string {
+  const paths = generatedInDiff(diff);
+  if (!paths.length) return '';
+  return (
+    'These changed files are auto-generated — do NOT report findings inside them. Mention one only if the change indicates the generator\'s input or config is wrong:\n' +
+    paths.map((p) => `- ${p}`).join('\n') +
+    '\n\n'
+  );
 }

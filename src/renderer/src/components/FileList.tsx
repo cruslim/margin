@@ -97,11 +97,7 @@ const TreeIcon = (
 );
 
 /** Marks a file as machine-generated. Also used in the diff toolbar. */
-export const GenBadge = () => (
-  <span className="file-gen" title="Auto-generated">
-    gen
-  </span>
-);
+export const GenBadge = () => <span className="file-gen">auto-generated</span>;
 
 export function FileList(props: {
   files: ChangedFile[];

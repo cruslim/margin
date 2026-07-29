@@ -1,6 +1,6 @@
 {
   "name": "margin",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Local AI code review with chat — review branches and uncommitted changes before they leave your machine.",
   "license": "MIT",

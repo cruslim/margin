@@ -626,6 +626,7 @@ export function App() {
                 <DiffPane
                   target={targetOf(active)}
                   path={selectedFile}
+                  generated={files.find((f) => f.path === selectedFile)?.generated}
                   findings={fileFindings}
                   comments={fileComments}
                   busy={!!chatBusy[active.key]}

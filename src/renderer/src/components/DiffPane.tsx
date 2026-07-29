@@ -5,6 +5,7 @@ import type { Comment, FileDiff, Finding, ReviewTarget } from '../../../shared/i
 import type { ChatScope } from '../App.js';
 import { dismissalKey } from '../App.js';
 import { FindingCard } from './FindingCard.js';
+import { GenBadge } from './FileList.js';
 import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
 
 interface LineExtend {
@@ -15,6 +16,8 @@ interface LineExtend {
 export function DiffPane(props: {
   target: ReviewTarget;
   path: string;
+  /** File is auto-generated — flagged in the toolbar. */
+  generated?: boolean;
   findings: Finding[];
   comments: Comment[];
   busy: boolean;
@@ -135,7 +138,10 @@ export function DiffPane(props: {
   return (
     <div className="diff-container">
       <div className="diff-toolbar">
-        <span className="diff-path">{diff.path}</span>
+        <span className="diff-title">
+          <span className="diff-path">{diff.path}</span>
+          {props.generated && <GenBadge />}
+        </span>
         <button
           className="icon-btn"
           onClick={() => setMode(mode === DiffModeEnum.SplitGitHub ? DiffModeEnum.Unified : DiffModeEnum.SplitGitHub)}

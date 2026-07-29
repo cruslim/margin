@@ -4,6 +4,8 @@ export interface ChangedFile {
   path: string;
   status: 'A' | 'M' | 'D' | 'R';
   oldPath?: string;
+  /** Auto-generated output (lockfile, build artifact, codegen) — see shared/generated.ts. */
+  generated?: boolean;
 }
 
 export interface FileDiff {

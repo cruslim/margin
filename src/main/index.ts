@@ -66,7 +66,7 @@ if (app.isPackaged) {
 // packaged app's productName is "Margin", which would otherwise move
 // userData and orphan existing sessions.
 app.setPath('userData', join(app.getPath('appData'), 'margin'));
-import { openRepo, changedFiles, fileDiff, applyPatch } from './gitService.js';
+import { openRepo, changedFiles, branchCommits, fileDiff, applyPatch } from './gitService.js';
 import { runReview } from '../engine/review.js';
 import { toAgentDefinitions } from '../engine/agents.js';
 import { chat } from '../engine/chat.js';
@@ -116,6 +116,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('repo:open', (_e, path: string) => openRepo(path));
   ipcMain.handle('diff:files', (_e, target: ReviewTarget) => changedFiles(target));
+  ipcMain.handle('git:commits', (_e, target: ReviewTarget) => branchCommits(target));
   ipcMain.handle('diff:file', (_e, target: ReviewTarget, path: string) => fileDiff(target, path));
 
   ipcMain.handle('settings:get', () => storage.loadSettings());
@@ -359,6 +360,13 @@ app.whenReady().then(() => {
         }, 4000);
         captureAndQuit(win, 9000, 'did-finish-load composer');
       } else {
+        // Same JS hook the run/comment paths expose, for driving the UI without
+        // spending a review or a chat turn.
+        if (process.env.MARGIN_SMOKE_JS) {
+          setTimeout(() => {
+            win.webContents.executeJavaScript(process.env.MARGIN_SMOKE_JS!).catch(() => {});
+          }, 3000);
+        }
         captureAndQuit(win, 4500, 'did-finish-load plain');
       }
     });

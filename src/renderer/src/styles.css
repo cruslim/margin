@@ -104,6 +104,36 @@ body.resizing * { pointer-events: none; }
 .row-del:hover { color: var(--err); }
 /* Always visible, like the repo row's ↻ — it's the main action on this row. */
 .sidebar .icon-btn.row-refresh { font-size: 13px; padding: 2px 6px; }
+/* Commits on the selected branch, under its row. */
+.commit-list { padding: 2px 0 6px 26px; display: flex; flex-direction: column; }
+.commit-list.empty-note { padding-top: 4px; font-size: 11px; }
+.commit-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 6px 2px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 0;
+}
+.commit-sha { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex-shrink: 0; }
+.commit-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-row:hover .commit-subject,
+.commit-row:hover .commit-sha { color: var(--text); }
+/* Fixed to the viewport so the sidebar's scroll container can't clip it. */
+.commit-tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: 420px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none; /* never steals the hover it was opened by */
+}
+.commit-tooltip-subject { color: var(--text); font-size: 12px; }
+.commit-tooltip-meta { color: var(--text-dim); font-size: 11px; margin-top: 3px; }
 .session-row:hover { background: var(--bg-raised); }
 .session-row.selected { background: var(--bg-raised); outline: 1px solid var(--border); }
 .session-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { BranchSelect } from './BranchSelect.js';
-import type { RepoInfo } from '../../../shared/ipc.js';
+import type { CommitInfo, RepoInfo } from '../../../shared/ipc.js';
 import type { Session } from '../App.js';
 import { sessionTitle } from '../App.js';
 
@@ -22,6 +22,8 @@ export function Sidebar(props: {
   onDeleteSession: (key: string) => void;
   /** Re-read this branch's changeset (picks up commits made since it was opened). */
   onRefreshSession: (key: string) => Promise<void>;
+  /** Commits on the selected branch, listed under its row. */
+  activeCommits: CommitInfo[];
   onRemoveRepo: (path: string) => void;
   onRefreshRepo: (path: string) => Promise<void>;
   onEditInstructions: (repo: RepoInfo) => void;
@@ -102,8 +104,8 @@ export function Sidebar(props: {
             {props.sessions
               .filter((s) => s.repoPath === repo.path)
               .map((s) => (
+                <Fragment key={s.key}>
                 <div
-                  key={s.key}
                   className={`session-row ${s.key === props.activeKey ? 'selected' : ''}`}
                   onClick={() => props.onSelectSession(s.key)}
                 >
@@ -132,6 +134,10 @@ export function Sidebar(props: {
                     ✕
                   </button>
                 </div>
+                {s.key === props.activeKey && s.headRef && (
+                  <CommitList commits={props.activeCommits} baseRef={s.baseRef} />
+                )}
+                </Fragment>
               ))}
           </div>
         ))}
@@ -141,6 +147,59 @@ export function Sidebar(props: {
       </div>
     </aside>
   );
+}
+
+/**
+ * Commits on the selected branch. Read-only orientation — the sidebar is narrow,
+ * so each row is sha + subject and the full detail goes in the tooltip.
+ */
+function CommitList(props: { commits: CommitInfo[]; baseRef: string }) {
+  // Own hover card rather than `title`: the native tooltip waits a second or
+  // more, and it's the truncated subject people need to read straight away.
+  const [hover, setHover] = useState<{ commit: CommitInfo; top: number; left: number } | null>(null);
+
+  if (props.commits.length === 0) {
+    return <div className="commit-list empty-note">No commits ahead of {props.baseRef}</div>;
+  }
+  return (
+    <div className="commit-list">
+      {props.commits.map((c) => (
+        <div
+          key={c.sha}
+          className="commit-row"
+          onMouseEnter={(e) => setHover({ commit: c, ...tooltipPosition(e.clientX, e.clientY) })}
+          onMouseLeave={() => setHover((h) => (h?.commit.sha === c.sha ? null : h))}
+        >
+          <span className="commit-sha">{c.sha}</span>
+          <span className="commit-subject">{c.subject}</span>
+        </div>
+      ))}
+      {hover && (
+        <div className="commit-tooltip" style={{ top: hover.top, left: hover.left }}>
+          <div className="commit-tooltip-subject">{hover.commit.subject}</div>
+          <div className="commit-tooltip-meta">
+            {hover.commit.sha} · {hover.commit.author} · {new Date(hover.commit.date).toLocaleString()}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Rough card size, for keeping it on screen near the window's edges. */
+const TOOLTIP_MAX_HEIGHT = 96;
+const TOOLTIP_MAX_WIDTH = 420;
+
+/**
+ * Place the card just below the pointer, flipping above it near the bottom edge
+ * and pulling left of it near the right edge so it never leaves the window.
+ */
+function tooltipPosition(x: number, y: number): { top: number; left: number } {
+  const below = y + 18;
+  return {
+    top: below + TOOLTIP_MAX_HEIGHT > window.innerHeight ? Math.max(4, y - TOOLTIP_MAX_HEIGHT) : below,
+    left: Math.max(4, Math.min(x + 4, window.innerWidth - TOOLTIP_MAX_WIDTH - 8)),
+  };
 }
 
 function NewReviewForm(props: {

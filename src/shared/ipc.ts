@@ -8,6 +8,16 @@ export interface ChangedFile {
   generated?: boolean;
 }
 
+/** A commit on the branch under review (not in its base). */
+export interface CommitInfo {
+  /** Abbreviated sha. */
+  sha: string;
+  subject: string;
+  author: string;
+  /** ISO 8601, author date. */
+  date: string;
+}
+
 export interface FileDiff {
   path: string;
   oldContent: string;
@@ -142,6 +152,8 @@ export interface MarginApi {
   pickRepo(): Promise<RepoInfo | null>;
   openRepo(path: string): Promise<RepoInfo | null>;
   changedFiles(target: ReviewTarget): Promise<ChangedFile[]>;
+  /** Commits on the branch under review; empty for working-tree targets. */
+  branchCommits(target: ReviewTarget): Promise<CommitInfo[]>;
   fileDiff(target: ReviewTarget, path: string): Promise<FileDiff>;
   runReview(
     sessionKey: string,

@@ -97,6 +97,58 @@ export function SettingsModal(props: { onClose: () => void }) {
           </div>
         </section>
 
+        <section className="settings-section">
+          <div className="settings-toggle">
+            Specialist agents <span className="settings-hint">(assignable per comment thread — the reviewer delegates the thread to them; read-only tools)</span>
+          </div>
+          {s.agents.map((a, i) => (
+            <div key={i} className="agent-row">
+              <div className="agent-row-head">
+                <input
+                  type="text"
+                  className="agent-name"
+                  placeholder="name (e.g. security)"
+                  value={a.name}
+                  onChange={(e) => setSettings({ ...s, agents: s.agents.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })}
+                />
+                <select
+                  value={a.model ?? ''}
+                  onChange={(e) => setSettings({ ...s, agents: s.agents.map((x, j) => (j === i ? { ...x, model: e.target.value || undefined } : x)) })}
+                >
+                  <option value="">session model</option>
+                  <option value="opus">opus</option>
+                  <option value="sonnet">sonnet</option>
+                  <option value="haiku">haiku</option>
+                </select>
+                <button
+                  className="icon-btn"
+                  title="Remove agent"
+                  onClick={() => setSettings({ ...s, agents: s.agents.filter((_, j) => j !== i) })}
+                >
+                  ✕
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="One-line description — when should the reviewer use this agent?"
+                value={a.description}
+                onChange={(e) => setSettings({ ...s, agents: s.agents.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)) })}
+              />
+              <textarea
+                placeholder="Instructions — the agent's system prompt"
+                value={a.instructions}
+                onChange={(e) => setSettings({ ...s, agents: s.agents.map((x, j) => (j === i ? { ...x, instructions: e.target.value } : x)) })}
+              />
+            </div>
+          ))}
+          <button
+            className="icon-btn add-agent"
+            onClick={() => setSettings({ ...s, agents: [...s.agents, { name: '', description: '', instructions: '' }] })}
+          >
+            + Add agent
+          </button>
+        </section>
+
         <div className="modal-actions">
           <button className="icon-btn" onClick={props.onClose}>Cancel</button>
           <button className="run-btn small" onClick={save}>Save</button>

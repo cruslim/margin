@@ -25,6 +25,8 @@ export function DiffPane(props: {
   reloadKey?: number;
   findings: Finding[];
   comments: Comment[];
+  /** Configured specialist agent names, selectable in the comment composer. */
+  agents: string[];
   busy: boolean;
   streamScope?: ChatScope;
   streamText: string;
@@ -35,6 +37,7 @@ export function DiffPane(props: {
     endLine: number,
     quoted: string,
     text: string,
+    agent?: string,
   ) => void;
   onReplyComment: (comment: Comment, text: string) => void;
   onToggleCollapse: (comment: Comment) => void;
@@ -49,8 +52,11 @@ export function DiffPane(props: {
   const [pendingRange, setPendingRange] = useState<{ side: 'old' | 'new'; start: number; end: number } | null>(null);
   const msRef = useRef<DiffViewWithMultiSelectRef>(null);
 
+  const [rangeAgent, setRangeAgent] = useState('');
+
   const clearRange = () => {
     setPendingRange(null);
+    setRangeAgent('');
     msRef.current?.clearSelection();
   };
 
@@ -78,6 +84,7 @@ export function DiffPane(props: {
   // underlying file changes out from under it.
   useEffect(() => {
     setPendingRange(null);
+    setRangeAgent('');
   }, [props.path, props.reloadKey]);
 
   // Keep the drag-selected rows visibly lit while the range composer is open
@@ -152,6 +159,7 @@ export function DiffPane(props: {
           <div className="composer-range">
             Comment on lines {pendingRange.start}–{pendingRange.end}
             {pendingRange.side === 'old' ? ' (old side)' : ''}
+            <AgentPicker agents={props.agents} value={rangeAgent} onChange={setRangeAgent} />
           </div>
           <ChatInput
             disabled={props.busy}
@@ -166,6 +174,7 @@ export function DiffPane(props: {
                 pendingRange.end,
                 quotedLines(pendingRange.side === 'old' ? SplitSide.old : SplitSide.new, pendingRange.start, pendingRange.end),
                 text,
+                rangeAgent || undefined,
               );
               clearRange();
             }}
@@ -204,10 +213,11 @@ export function DiffPane(props: {
             return (
               <CommentComposer
                 busy={props.busy}
+                agents={props.agents}
                 startLine={from}
                 endLine={to}
                 onCancel={onClose}
-                onSend={(startLine, text) => {
+                onSend={(startLine, text, agent) => {
                   props.onAddComment(
                     props.path,
                     side === SplitSide.old ? 'old' : 'new',
@@ -215,6 +225,7 @@ export function DiffPane(props: {
                     to,
                     quotedLines(side, startLine, to),
                     text,
+                    agent,
                   );
                   onClose();
                 }}
@@ -259,14 +270,36 @@ export function DiffPane(props: {
   );
 }
 
+/** Route a new comment thread to a specialist subagent ('' = the main reviewer). */
+function AgentPicker(props: { agents: string[]; value: string; onChange: (v: string) => void }) {
+  if (props.agents.length === 0) return null;
+  return (
+    <select
+      className="agent-select"
+      title="Specialist agent for this thread — briefed by the reviewer, replies stay with it"
+      value={props.value}
+      onChange={(e) => props.onChange(e.target.value)}
+    >
+      <option value="">reviewer</option>
+      {props.agents.map((a) => (
+        <option key={a} value={a}>
+          @{a}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function CommentComposer(props: {
   busy: boolean;
+  agents: string[];
   startLine: number;
   endLine: number;
   onCancel: () => void;
-  onSend: (startLine: number, text: string) => void;
+  onSend: (startLine: number, text: string, agent?: string) => void;
 }) {
   const [startLine, setStartLine] = useState(props.startLine);
+  const [agent, setAgent] = useState('');
 
   return (
     <div className="comment-composer">
@@ -283,13 +316,14 @@ function CommentComposer(props: {
           }}
         />{' '}
         – {props.endLine}
+        <AgentPicker agents={props.agents} value={agent} onChange={setAgent} />
       </div>
       <ChatInput
         disabled={props.busy}
         placeholder="Comment on these lines — starts an AI thread…"
         autoFocus
         onCancel={props.onCancel}
-        onSend={(text) => props.onSend(startLine, text)}
+        onSend={(text) => props.onSend(startLine, text, agent || undefined)}
       />
     </div>
   );
@@ -317,6 +351,7 @@ function CommentThread(props: {
     <div className="comment-head" onClick={props.onToggleCollapse} title={collapsed ? 'Expand' : 'Collapse'}>
       <span className="comment-chevron">{collapsed ? '▸' : '▾'}</span>
       <span className={`comment-title ${resolved ? 'resolved' : ''}`}>{resolved ? 'Resolved' : 'Comment'}</span>
+      {props.comment.agent && <span className="comment-agent">@{props.comment.agent}</span>}
       {collapsed && (
         <span className="comment-preview">
           {props.comment.messages[0]?.text.slice(0, 80)}

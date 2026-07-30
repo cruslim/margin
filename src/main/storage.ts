@@ -53,6 +53,9 @@ export async function loadSettings(): Promise<AppSettings> {
     openai: { ...DEFAULT_SETTINGS.openai, ...stored?.openai },
     coderabbit: { ...DEFAULT_SETTINGS.coderabbit, ...stored?.coderabbit },
     verifier: { ...DEFAULT_SETTINGS.verifier, ...stored?.verifier },
+    // Defaults only seed pre-agents settings files; an explicit [] means the
+    // user deleted them. Copy the defaults so callers never mutate the shared objects.
+    agents: stored?.agents ?? DEFAULT_SETTINGS.agents.map((a) => ({ ...a })),
   };
 }
 

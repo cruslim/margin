@@ -68,6 +68,7 @@ if (app.isPackaged) {
 app.setPath('userData', join(app.getPath('appData'), 'margin'));
 import { openRepo, changedFiles, fileDiff, applyPatch } from './gitService.js';
 import { runReview } from '../engine/review.js';
+import { toAgentDefinitions } from '../engine/agents.js';
 import { chat } from '../engine/chat.js';
 import { runBasicReview } from '../engine/basicReview.js';
 import { runCodeRabbitReview } from '../engine/coderabbit.js';
@@ -232,15 +233,21 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('workdir:prepare', (_e, target: ReviewTarget) =>
-    target.headRef ? createWorktree(target.repoPath, target.headRef) : target.repoPath,
-  );
+  // Validate a session's workDir before use — macOS reaps temp worktrees after
+  // a few days, and spawning the SDK CLI in a missing cwd fails with a
+  // misleading "spawn node ENOENT". Recreate the worktree when it's gone.
+  ipcMain.handle('workdir:ensure', async (_e, target: ReviewTarget, workDir: string | null) => {
+    if (workDir && existsSync(workDir)) return { workDir, recreated: false };
+    const fresh = target.headRef ? await createWorktree(target.repoPath, target.headRef) : target.repoPath;
+    return { workDir: fresh, recreated: workDir !== null && fresh !== workDir };
+  });
 
   let midstreamCaptured = false;
-  ipcMain.handle('chat:send', async (event, sessionKey: string, sdkSessionId: string | null, workDir: string, message: string, opts?: { model?: string; repoPath?: string }) => {
+  ipcMain.handle('chat:send', async (event, sessionKey: string, sdkSessionId: string | null, workDir: string, message: string, opts?: { model?: string; repoPath?: string; agent?: string }) => {
     const sender = event.sender;
     // App-stored instructions key off the real repo path (workDir may be a temp worktree).
     const instructions = opts?.repoPath ? await storage.getRepoInstructions(opts.repoPath) : '';
+    const agents = opts?.agent ? toAgentDefinitions((await storage.loadSettings()).agents) : undefined;
     try {
       return await chat(
         sdkSessionId,
@@ -259,7 +266,7 @@ app.whenReady().then(() => {
             }
           },
         },
-        { model: opts?.model, instructions },
+        { model: opts?.model, instructions, agents, agent: opts?.agent },
       );
     } finally {
       if (process.env.MARGIN_SMOKE_CHAT || process.env.MARGIN_SMOKE_COMMENT) {

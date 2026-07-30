@@ -55,6 +55,10 @@ export async function loadSettings(): Promise<AppSettings> {
     // Defaults only seed pre-agents settings files; an explicit [] means the
     // user deleted them. Copy the defaults so callers never mutate the shared objects.
     agents: stored?.agents ?? DEFAULT_SETTINGS.agents.map((a) => ({ ...a })),
+    themes: {
+      active: stored?.themes?.active ?? DEFAULT_SETTINGS.themes.active,
+      custom: stored?.themes?.custom ?? [],
+    },
   };
 }
 

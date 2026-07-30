@@ -71,6 +71,9 @@ export function App() {
     window.margin.getSettings().then((s) => setAgentNames(s.agents.filter((a) => a.name.trim() && a.instructions.trim()).map((a) => a.name.trim())));
   }, [settingsOpen]);
   const loaded = useRef(false);
+  // True until persisted state has arrived — renders the boot mark instead of
+  // flashing the empty "Add repository" hero at users who have repos.
+  const [booting, setBooting] = useState(true);
 
   const sidebarPanel = usePanelWidth('sidebar', 230, 160, 480, 1);
   const filesPanel = usePanelWidth('filelist', 220, 150, 520, 1);
@@ -82,12 +85,23 @@ export function App() {
   useEffect(() => {
     if (window.margin.smokeConfig()) {
       loaded.current = true;
+      setBooting(false);
       return;
     }
     window.margin.loadState().then((state) => {
       setRepos(state.repos);
       setSessions(state.sessions);
       loaded.current = true;
+      setBooting(false);
+      // loadState serves the stored snapshot without touching git — refresh
+      // every repo's branch list in the background, in parallel.
+      for (const r of state.repos) {
+        window.margin.openRepo(r.path).then((repo) => {
+          if (!repo) return;
+          window.margin.saveRepo(repo).catch(() => {});
+          setRepos((prev) => prev.map((x) => (x.path === repo.path ? repo : x)));
+        });
+      }
     });
   }, []);
 
@@ -677,6 +691,16 @@ export function App() {
   const activeScope = active ? chatScope[active.key] : undefined;
   const activeStream = active ? streamText[active.key] ?? '' : '';
   const deltaAvailable = !!(active?.lastReviewedSha && active.headRef && active.status === 'done');
+
+  if (booting) {
+    return (
+      <div className="app">
+        <div className="boot-splash">
+          <span className="boot-mark">Margin</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">

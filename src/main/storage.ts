@@ -4,7 +4,6 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { AppSettings, DismissedFinding, PersistedState, RepoInfo, Session } from '../shared/ipc.js';
 import { DEFAULT_SETTINGS } from '../shared/ipc.js';
-import { openRepo } from './gitService.js';
 
 /**
  * Plain-JSON persistence: one folder per repo, one folder per branch,
@@ -147,8 +146,9 @@ export async function loadState(): Promise<PersistedState> {
     const dir = join(reviewsRoot(), repoDir);
     const stored = await readJson<RepoInfo>(join(dir, 'repo.json'));
     if (!stored) continue;
-    // Refresh branch list from the live repo; keep stored info if it moved/vanished.
-    repos.push((await openRepo(stored.path)) ?? stored);
+    // Serve the stored snapshot as-is — startup never waits on git. The
+    // renderer refreshes each repo's branch list in the background.
+    repos.push(stored);
 
     for (const branchDir of await readdir(dir).catch(() => [] as string[])) {
       for (const file of await readdir(join(dir, branchDir)).catch(() => [] as string[])) {

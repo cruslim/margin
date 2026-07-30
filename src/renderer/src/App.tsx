@@ -538,7 +538,12 @@ export function App() {
             // Late re-select: the session's own file-load effect races this and would win with files[0].
             setTimeout(() => setSelectedFile(file.path), 600);
             const line = smoke.commentLine || 20;
-            addComment(session, file.path, 'new', line, line, '', smoke.comment);
+            // Quote the real line, like the UI does — a comment with no quoted
+            // source can't re-anchor, so an empty one wouldn't exercise the path.
+            window.margin.fileDiff(targetOf(session), file.path).then((d) => {
+              const quoted = d.newContent.split('\n')[line - 1] ?? '';
+              addComment(session, file.path, 'new', line, line, quoted, smoke.comment);
+            });
           }
         });
       }

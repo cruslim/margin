@@ -167,16 +167,7 @@ function CommitList(props: { commits: CommitInfo[]; baseRef: string }) {
         <div
           key={c.sha}
           className="commit-row"
-          onMouseEnter={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            setHover({
-              commit: c,
-              // Fixed to the viewport, so the sidebar's scroll container can't
-              // clip it; clamped so a row near the bottom stays on screen.
-              top: Math.min(r.top - 4, window.innerHeight - TOOLTIP_MAX_HEIGHT),
-              left: r.right + 10,
-            });
-          }}
+          onMouseEnter={(e) => setHover({ commit: c, ...tooltipPosition(e.clientX, e.clientY) })}
           onMouseLeave={() => setHover((h) => (h?.commit.sha === c.sha ? null : h))}
         >
           <span className="commit-sha">{c.sha}</span>
@@ -195,8 +186,21 @@ function CommitList(props: { commits: CommitInfo[]; baseRef: string }) {
   );
 }
 
-/** Rough tooltip height, for keeping it on screen near the window's bottom edge. */
+/** Rough card size, for keeping it on screen near the window's edges. */
 const TOOLTIP_MAX_HEIGHT = 96;
+const TOOLTIP_MAX_WIDTH = 420;
+
+/**
+ * Place the card just below the pointer, flipping above it near the bottom edge
+ * and pulling left of it near the right edge so it never leaves the window.
+ */
+function tooltipPosition(x: number, y: number): { top: number; left: number } {
+  const below = y + 18;
+  return {
+    top: below + TOOLTIP_MAX_HEIGHT > window.innerHeight ? Math.max(4, y - TOOLTIP_MAX_HEIGHT) : below,
+    left: Math.max(4, Math.min(x + 4, window.innerWidth - TOOLTIP_MAX_WIDTH - 8)),
+  };
+}
 
 function NewReviewForm(props: {
   repo: RepoInfo;

@@ -60,6 +60,13 @@ export function App() {
   const [dismissals, setDismissals] = useState<Record<string, DismissedFinding[]>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [instructionsRepo, setInstructionsRepo] = useState<RepoInfo | null>(null);
+  const [agentNames, setAgentNames] = useState<string[]>([]);
+
+  // Specialist agent names for the comment composer; refresh after settings close.
+  useEffect(() => {
+    if (settingsOpen) return;
+    window.margin.getSettings().then((s) => setAgentNames(s.agents.filter((a) => a.name.trim() && a.instructions.trim()).map((a) => a.name.trim())));
+  }, [settingsOpen]);
   const loaded = useRef(false);
 
   const sidebarPanel = usePanelWidth('sidebar', 230, 160, 480, 1);
@@ -298,6 +305,20 @@ export function App() {
     setDismissals((prev) => ({ ...prev, [repoPath]: all }));
   }, []);
 
+  // Validate the session's workDir (macOS reaps temp worktrees). When it had to
+  // be recreated, the old SDK session can't resume — drop it and start fresh.
+  const ensureSessionWorkdir = useCallback(
+    async (session: Session): Promise<{ workDir: string; sdkSessionId: string | null }> => {
+      const res = await window.margin.ensureWorkdir(targetOf(session), session.workDir ?? null);
+      if (res.recreated) {
+        patchSession(session.key, { workDir: res.workDir, sdkSessionId: undefined });
+        return { workDir: res.workDir, sdkSessionId: null };
+      }
+      return { workDir: res.workDir, sdkSessionId: session.sdkSessionId ?? null };
+    },
+    [patchSession],
+  );
+
   const appendChatMessage = useCallback(
     (sessionKey: string, msg: ChatMessage, findingIndex?: number) => {
       patchSession(sessionKey, (s) =>
@@ -312,7 +333,7 @@ export function App() {
   const sendChatCore = useCallback(
     async (
       sessionKey: string,
-      sdkSessionId: string,
+      sdkSessionId: string | null,
       workDir: string,
       displayText: string,
       prompt: string,
@@ -345,29 +366,31 @@ export function App() {
   );
 
   const sendChat = useCallback(
-    (session: Session, text: string, findingIndex?: number) => {
+    async (session: Session, text: string, findingIndex?: number) => {
       if (!session.sdkSessionId || !session.workDir || chatBusy[session.key]) return;
       let prompt = text;
       if (findingIndex != null) {
         const f = session.findings[findingIndex];
         prompt = `Regarding your review finding "${f.summary}" at ${f.file}:${f.line}:\n\n${text}`;
       }
-      sendChatCore(session.key, session.sdkSessionId, session.workDir, text, prompt, findingIndex, session.modelChoice);
+      const { workDir, sdkSessionId } = await ensureSessionWorkdir(session);
+      sendChatCore(session.key, sdkSessionId, workDir, text, prompt, findingIndex, session.modelChoice);
     },
-    [sendChatCore, chatBusy],
+    [sendChatCore, chatBusy, ensureSessionWorkdir],
   );
 
   const proposeFix = useCallback(
-    (session: Session, findingIndex: number) => {
+    async (session: Session, findingIndex: number) => {
       if (!session.sdkSessionId || !session.workDir || chatBusy[session.key]) return;
       const f = session.findings[findingIndex];
       const prompt =
         `Propose a minimal fix for your review finding "${f.summary}" at ${f.file}:${f.line}. ` +
         'Reply with a one-paragraph explanation followed by exactly ONE unified diff inside a ```diff code fence, ' +
         'using a/ b/ path prefixes so it applies cleanly with `git apply` from the repo root. No other code blocks.';
-      sendChatCore(session.key, session.sdkSessionId, session.workDir, 'Propose a fix', prompt, findingIndex, session.modelChoice);
+      const { workDir, sdkSessionId } = await ensureSessionWorkdir(session);
+      sendChatCore(session.key, sdkSessionId, workDir, 'Propose a fix', prompt, findingIndex, session.modelChoice);
     },
-    [sendChatCore, chatBusy],
+    [sendChatCore, chatBusy, ensureSessionWorkdir],
   );
 
   const applyPatch = useCallback(
@@ -414,17 +437,18 @@ export function App() {
   );
 
   const runCommentTurn = useCallback(
-    async (session: Session, commentId: string, prompt: string) => {
+    async (session: Session, commentId: string, prompt: string, agent?: string) => {
       setChatBusy((b) => ({ ...b, [session.key]: true }));
       setChatScope((p) => ({ ...p, [session.key]: { type: 'comment', id: commentId } }));
       setStreamText((p) => ({ ...p, [session.key]: '' }));
       try {
         // Comments work before any review ran: lazily prepare a workdir and
         // let chat() start a fresh session when there's nothing to resume.
-        const workDir = session.workDir ?? (await window.margin.prepareWorkdir(targetOf(session)));
-        const reply = await window.margin.sendChat(session.key, session.sdkSessionId ?? null, workDir, prompt, {
+        const { workDir, sdkSessionId } = await ensureSessionWorkdir(session);
+        const reply = await window.margin.sendChat(session.key, sdkSessionId, workDir, prompt, {
           model: session.modelChoice,
           repoPath: session.repoPath,
+          agent,
         });
         patchSession(session.key, (s) => ({
           sdkSessionId: reply.sessionId,
@@ -443,7 +467,7 @@ export function App() {
         });
       }
     },
-    [appendToComment, patchSession],
+    [appendToComment, patchSession, ensureSessionWorkdir],
   );
 
   const addComment = useCallback(
@@ -455,6 +479,7 @@ export function App() {
       endLine: number,
       quoted: string,
       text: string,
+      agent?: string,
     ) => {
       if (chatBusy[session.key]) return;
       const comment: Comment = {
@@ -466,6 +491,7 @@ export function App() {
         // Kept so the thread can re-anchor itself once the file shifts.
         quoted: quoted || undefined,
         messages: [{ role: 'user', text, at: Date.now() }],
+        agent,
       };
       patchSession(session.key, (s) => ({ comments: [...(s.comments ?? []), comment] }));
       const lineDesc = startLine === endLine ? `line ${endLine}` : `lines ${startLine}-${endLine}`;
@@ -473,7 +499,7 @@ export function App() {
         `The user commented on ${file}, ${lineDesc} (${side === 'old' ? 'old/removed side of the diff' : 'new version'}).` +
         (quoted ? `\nThe line(s) read:\n\`\`\`\n${quoted}\n\`\`\`` : '') +
         `\nChangeset under review: ${session.baseRef}...${session.headRef ?? 'working tree'}.\n\n${text}`;
-      runCommentTurn(session, comment.id, prompt);
+      runCommentTurn(session, comment.id, prompt, agent);
     },
     [chatBusy, patchSession, runCommentTurn],
   );
@@ -523,7 +549,8 @@ export function App() {
       if (chatBusy[session.key]) return;
       appendToComment(session.key, comment.id, { role: 'user', text, at: Date.now() });
       const prompt = `Continuing the comment thread on ${comment.file}:${comment.endLine} (${comment.side} side):\n\n${text}`;
-      runCommentTurn(session, comment.id, prompt);
+      // Replies stay with the thread's specialist agent.
+      runCommentTurn(session, comment.id, prompt, comment.agent);
     },
     [chatBusy, appendToComment, runCommentTurn],
   );
@@ -722,11 +749,12 @@ export function App() {
                   generated={files.find((f) => f.path === selectedFile)?.generated}
                   findings={fileFindings}
                   comments={fileComments}
+                  agents={agentNames}
                   busy={!!chatBusy[active.key]}
                   streamScope={activeScope}
                   streamText={activeStream}
-                  onAddComment={(file, side, startLine, endLine, quoted, text) =>
-                    addComment(active, file, side, startLine, endLine, quoted, text)
+                  onAddComment={(file, side, startLine, endLine, quoted, text, agent) =>
+                    addComment(active, file, side, startLine, endLine, quoted, text, agent)
                   }
                   onReplyComment={(comment, text) => replyComment(active, comment, text)}
                   onToggleCollapse={(comment) => toggleCollapseComment(active, comment.id)}

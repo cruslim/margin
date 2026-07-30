@@ -54,6 +54,8 @@ export interface Comment {
   collapsed?: boolean;
   /** Conversation marked as resolved (GitHub-style). Resolving also collapses the thread. */
   resolved?: boolean;
+  /** Specialist agent handling this thread (AppSettings.agents name); unset = the main reviewer. */
+  agent?: string;
 }
 
 export interface Session {
@@ -111,12 +113,28 @@ export interface AppSettings {
     /** Model for the verifier session; '' = the session's model choice. */
     model: string;
   };
+  /** Specialist subagents assignable to comment threads. */
+  agents: Array<{ name: string; description: string; instructions: string; model?: string }>;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   openai: { enabled: false, baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' },
   coderabbit: { enabled: false },
   verifier: { enabled: false, model: '' },
+  agents: [
+    {
+      name: 'security',
+      description: 'Security review specialist — attack surfaces, injection, authz, secrets.',
+      instructions:
+        'You are a security review specialist. Analyze the code you are asked about strictly through a security lens: injection, authn/authz gaps, secrets handling, unsafe deserialization, path traversal, SSRF. Ground every claim in the actual code (read it) and name concrete attack scenarios.',
+    },
+    {
+      name: 'performance',
+      description: 'Performance specialist — complexity, allocations, N+1, hot paths.',
+      instructions:
+        'You are a performance specialist. Analyze the code you are asked about for algorithmic complexity, redundant work, N+1 patterns, unnecessary allocations, and blocking I/O on hot paths. Ground every claim in the actual code and quantify impact where possible.',
+    },
+  ],
 };
 
 /** API exposed to the renderer via the preload bridge. */
@@ -141,19 +159,24 @@ export interface MarginApi {
   /**
    * Send a chat turn. Resumes sdkSessionId, or starts a fresh session in workDir when null.
    * Pass repoPath so fresh sessions pick up the app-stored per-repo instructions.
+   * Pass agent to delegate the turn to that configured specialist subagent.
    */
   sendChat(
     sessionKey: string,
     sdkSessionId: string | null,
     workDir: string,
     message: string,
-    opts?: { model?: string; repoPath?: string },
+    opts?: { model?: string; repoPath?: string; agent?: string },
   ): Promise<ChatReply>;
   /** User's app-stored review instructions for a repo (merged with the repo's committed .margin/margin.md). */
   getRepoInstructions(repoPath: string): Promise<string>;
   saveRepoInstructions(repoPath: string, text: string): Promise<void>;
-  /** Ensure a workdir exists for a session (temp worktree for branch reviews) before any review ran. */
-  prepareWorkdir(target: ReviewTarget): Promise<string>;
+  /**
+   * Validate a session's workDir before a chat turn, creating or recreating the
+   * temp worktree when missing (macOS reaps temp dirs). `recreated` means the
+   * old dir vanished — the SDK session keyed to it can no longer resume.
+   */
+  ensureWorkdir(target: ReviewTarget, workDir: string | null): Promise<{ workDir: string; recreated: boolean }>;
   /**
    * Apply a unified diff to the repo's working copy. Runs `git apply --check` first,
    * retrying with lenient matching; `note` says when a lenient level was needed.

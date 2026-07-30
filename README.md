@@ -10,6 +10,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 - **Split/unified diff viewer** with inline finding cards anchored to file/line, and a file list (tree or flat) with per-file finding and conversation indicators
 - **Chat** — general session chat, per-finding threads, and GitHub-style line-anchored comment threads (hover a diff line, click +; works even before a review runs), all streamed live with copyable replies
 - **Resolvable conversations** — mark a comment thread resolved to collapse it; the file list shows which files have ongoing (blue) vs fully resolved (green) conversations
+- **Specialist agents** — define named subagents (e.g. `@security`, `@performance`) in settings and assign one when starting a comment thread; the reviewer delegates the thread to it (briefed with the session's context, read-only tools, optional model override) and replies stay with the same specialist
 - **Propose fix** — the agent replies with a unified diff; applying it always shows the patch and asks first (`git apply --recount`)
 - **Multi-model finders** — an OpenAI-compatible endpoint (GPT/Ollama/OpenRouter) and the CodeRabbit CLI can run in parallel with the Claude reviewer; findings are source-tagged with a per-reviewer Agent-log filter
 - **Verifier pass** — an agentic session cross-examines every finding against the code and marks it verified/refuted/uncertain with reasons

@@ -1,4 +1,5 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, type AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
+import { delegationPrompt } from './agents.js';
 import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
 
 export interface ChatReply {
@@ -17,6 +18,10 @@ export interface ChatOptions {
   model?: string;
   /** User's app-stored per-repo instructions — only used when starting a fresh session. */
   instructions?: string;
+  /** Named specialist subagents available for delegation. */
+  agents?: Record<string, AgentDefinition>;
+  /** Route this turn to one of `agents` via subagent delegation. */
+  agent?: string;
 }
 
 const FRESH_SESSION_PROMPT = `You are Margin, a code review assistant. You are answering questions about a changeset inside a checkout of the repository. Explore with Read/Grep/Glob to ground your answers in the actual code. Be concise and concrete.`;
@@ -49,12 +54,17 @@ export async function chat(
     ? ''
     : mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
 
+  // Subagents (and the Task tool that spawns them) are only exposed on turns
+  // that explicitly target an agent, so plain turns stay deterministic.
+  const delegate = opts.agent && opts.agents?.[opts.agent] ? opts.agent : undefined;
+
   const stream = query({
-    prompt: message,
+    prompt: delegate ? delegationPrompt(delegate, message) : message,
     options: {
       ...(sessionId ? { resume: sessionId } : { systemPrompt: freshSessionPrompt(projectInstructions) }),
+      ...(delegate ? { agents: opts.agents } : {}),
       cwd: workDir,
-      allowedTools: ['Read', 'Grep', 'Glob'],
+      allowedTools: delegate ? ['Read', 'Grep', 'Glob', 'Task'] : ['Read', 'Grep', 'Glob'],
       disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'],
       maxTurns: 30,
       ...(opts.model ? { model: opts.model } : {}),

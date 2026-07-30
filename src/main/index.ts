@@ -89,11 +89,14 @@ function createWindow(): BrowserWindow {
     title: 'Margin',
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#16161e',
+    // Appear fully painted: the first frame is the boot mark, never a blank window.
+    show: false,
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),
       sandbox: false,
     },
   });
+  win.once('ready-to-show', () => win.show());
 
   if (isDev) {
     win.loadURL(process.env.ELECTRON_RENDERER_URL!);

@@ -38,6 +38,17 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .app { display: flex; height: 100vh; }
 
+/* ---------- boot ---------- */
+.boot-splash { flex: 1; display: flex; align-items: center; justify-content: center; }
+.boot-mark {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  animation: boot-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes boot-pulse { from { opacity: 0.45; } to { opacity: 0.9; } }
+
 /* ---------- resizable panels ---------- */
 .resize-handle {
   flex: 0 0 5px;

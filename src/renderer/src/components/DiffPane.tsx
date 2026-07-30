@@ -18,6 +18,11 @@ export function DiffPane(props: {
   path: string;
   /** File is auto-generated — flagged in the toolbar. */
   generated?: boolean;
+  /** Fetched by App, whose content also anchors the findings panel. */
+  diff: FileDiff | null;
+  error?: string | null;
+  /** Changes on an explicit refresh, to drop a half-made selection. */
+  reloadKey?: number;
   findings: Finding[];
   comments: Comment[];
   busy: boolean;
@@ -39,8 +44,7 @@ export function DiffPane(props: {
   onToggleFinding: (f: Finding) => void;
   onApplyPatch: (patch: string, commentId: string) => void;
 }) {
-  const [diff, setDiff] = useState<FileDiff | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { diff, error } = props;
   const [mode, setMode] = useState<DiffModeEnum>(DiffModeEnum.SplitGitHub);
   const [pendingRange, setPendingRange] = useState<{ side: 'old' | 'new'; start: number; end: number } | null>(null);
   const msRef = useRef<DiffViewWithMultiSelectRef>(null);
@@ -69,19 +73,12 @@ export function DiffPane(props: {
     return () => document.removeEventListener('mouseup', onUp);
   }, []);
 
+  // The diff itself is fetched by App (its content anchors both the inline cards
+  // and the findings panel); this just drops a half-made selection when the
+  // underlying file changes out from under it.
   useEffect(() => {
-    let cancelled = false;
-    setDiff(null);
-    setError(null);
     setPendingRange(null);
-    window.margin
-      .fileDiff(props.target, props.path)
-      .then((d) => !cancelled && setDiff(d))
-      .catch((e) => !cancelled && setError(String(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [props.target.repoPath, props.target.baseRef, props.target.headRef, props.path]);
+  }, [props.path, props.reloadKey]);
 
   // Keep the drag-selected rows visibly lit while the range composer is open
   // (the lib clears its own selection highlight on mouseup).
@@ -113,6 +110,7 @@ export function DiffPane(props: {
   }, [pendingRange]);
 
   // Inline extends: findings anchor to the new side; comments to either side.
+  // Both arrive already re-anchored from App.
   const extendData = useMemo(() => {
     const oldFile: Record<number, { data: LineExtend }> = {};
     const newFile: Record<number, { data: LineExtend }> = {};

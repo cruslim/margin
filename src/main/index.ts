@@ -221,7 +221,13 @@ app.whenReady().then(() => {
             win.webContents.executeJavaScript(`document.querySelector('.finding-head.toggleable')?.click()`).catch(() => {});
           }, 1500);
         }
-        captureAndQuit(win, 3000, 'review:run finally');
+        // Same hook the chat/comment path exposes, so a review can be driven too.
+        if (process.env.MARGIN_SMOKE_JS) {
+          setTimeout(() => {
+            win.webContents.executeJavaScript(process.env.MARGIN_SMOKE_JS!).catch(() => {});
+          }, 1500);
+        }
+        captureAndQuit(win, 4000, 'review:run finally');
       }
     }
   });

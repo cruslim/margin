@@ -20,6 +20,8 @@ export function Sidebar(props: {
   onNewSession: (repo: RepoInfo, baseRef: string, headRef: string | null) => void;
   onSelectSession: (key: string) => void;
   onDeleteSession: (key: string) => void;
+  /** Re-read this branch's changeset (picks up commits made since it was opened). */
+  onRefreshSession: (key: string) => Promise<void>;
   onRemoveRepo: (path: string) => void;
   onRefreshRepo: (path: string) => Promise<void>;
   onEditInstructions: (repo: RepoInfo) => void;
@@ -31,6 +33,10 @@ export function Sidebar(props: {
   const refresh = (path: string) => {
     setRefreshing(path);
     props.onRefreshRepo(path).finally(() => setRefreshing((prev) => (prev === path ? null : prev)));
+  };
+  const refreshSession = (key: string) => {
+    setRefreshing(key);
+    props.onRefreshSession(key).finally(() => setRefreshing((prev) => (prev === key ? null : prev)));
   };
 
   return (
@@ -104,6 +110,17 @@ export function Sidebar(props: {
                   <span className={`session-status st-${s.status}`}>{STATUS_ICON[s.status]}</span>
                   <span className="session-label">{sessionTitle(s)}</span>
                   {s.findings.length > 0 && <span className="badge">{s.findings.length}</span>}
+                  <button
+                    className={`icon-btn row-refresh ${refreshing === s.key ? 'spinning' : ''}`}
+                    title="Refresh this branch's changes"
+                    disabled={refreshing === s.key}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      refreshSession(s.key);
+                    }}
+                  >
+                    ↻
+                  </button>
                   <button
                     className="icon-btn row-del"
                     title="Delete session"

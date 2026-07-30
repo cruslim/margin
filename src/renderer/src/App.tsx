@@ -4,11 +4,13 @@ import type {
   ChatMessage,
   Comment,
   DismissedFinding,
+  FileDiff,
   Finding,
   RepoInfo,
   ReviewTarget,
   Session,
 } from '../../shared/ipc.js';
+import { reanchor } from './components/reanchor.js';
 
 /** Which thread the in-flight chat turn belongs to, for routing streamed text. */
 export type ChatScope = { type: 'chat' } | { type: 'finding'; index: number } | { type: 'comment'; id: string };
@@ -34,11 +36,23 @@ export function sessionTitle(s: Session): string {
   return s.headRef ?? 'uncommitted changes';
 }
 
+/** File to open by default: something hand-written — a lockfile is rarely what you came to read. */
+function firstReadable(files: ChangedFile[]): string | null {
+  return (files.find((f) => !f.generated) ?? files[0])?.path ?? null;
+}
+
 export function App() {
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [files, setFiles] = useState<ChangedFile[]>([]);
+  /** Bumped to force the open file's diff to refetch on an explicit refresh. */
+  const [diffReloadKey, setDiffReloadKey] = useState(0);
+  // The open file's diff lives here rather than in DiffPane: its content is what
+  // re-anchors findings and comments, and the findings panel needs the same
+  // anchors the diff uses or the two disagree about where a finding is.
+  const [openDiff, setOpenDiff] = useState<FileDiff | null>(null);
+  const [openDiffError, setOpenDiffError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [chatBusy, setChatBusy] = useState<Record<string, boolean>>({});
   const [streamText, setStreamText] = useState<Record<string, string>>({});
@@ -111,14 +125,56 @@ export function App() {
       .then((f) => {
         if (cancelled) return;
         setFiles(f);
-        // Open on something hand-written; a lockfile is rarely what you came to read.
-        setSelectedFile((f.find((x) => !x.generated) ?? f[0])?.path ?? null);
+        setSelectedFile(firstReadable(f));
       })
       .catch(() => setFiles([]));
     return () => {
       cancelled = true;
     };
   }, [activeKey, active?.repoPath, active?.baseRef, active?.headRef]);
+
+  // Load the open file's diff. Refetches on an explicit refresh even when the
+  // path is unchanged, since the content behind it may have moved.
+  useEffect(() => {
+    if (!active || !selectedFile) {
+      setOpenDiff(null);
+      setOpenDiffError(null);
+      return;
+    }
+    let cancelled = false;
+    setOpenDiff(null);
+    setOpenDiffError(null);
+    window.margin
+      .fileDiff(targetOf(active), selectedFile)
+      .then((d) => !cancelled && setOpenDiff(d))
+      .catch((e) => !cancelled && setOpenDiffError(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [active?.repoPath, active?.baseRef, active?.headRef, selectedFile, diffReloadKey]);
+
+  /**
+   * Re-read the changeset. Branch sessions diff `base...branch`, so git resolves
+   * the branch tip on every call — new commits show up here. Keeps the selected
+   * file when it's still in the set, and bumps the diff key so the open file
+   * refetches even though its path didn't change.
+   */
+  const refreshSession = useCallback(
+    async (key: string) => {
+      // A different branch: selecting it loads its changeset fresh anyway.
+      if (key !== activeKey) {
+        setActiveKey(key);
+        return;
+      }
+      if (!active) return;
+      const f = await window.margin.changedFiles(targetOf(active)).catch(() => null);
+      if (!f) return; // leave the current view alone rather than blanking it
+      setFiles(f);
+      setSelectedFile((prev) => (prev && f.some((x) => x.path === prev) ? prev : firstReadable(f)));
+      setDiffReloadKey((k) => k + 1);
+    },
+    [active, activeKey],
+  );
 
   const addRepo = useCallback(async () => {
     const repo = await window.margin.pickRepo();
@@ -407,6 +463,8 @@ export function App() {
         side,
         startLine,
         endLine,
+        // Kept so the thread can re-anchor itself once the file shifts.
+        quoted: quoted || undefined,
         messages: [{ role: 'user', text, at: Date.now() }],
       };
       patchSession(session.key, (s) => ({ comments: [...(s.comments ?? []), comment] }));
@@ -515,7 +573,12 @@ export function App() {
             // Late re-select: the session's own file-load effect races this and would win with files[0].
             setTimeout(() => setSelectedFile(file.path), 600);
             const line = smoke.commentLine || 20;
-            addComment(session, file.path, 'new', line, line, '', smoke.comment);
+            // Quote the real line, like the UI does — a comment with no quoted
+            // source can't re-anchor, so an empty one wouldn't exercise the path.
+            window.margin.fileDiff(targetOf(session), file.path).then((d) => {
+              const quoted = d.newContent.split('\n')[line - 1] ?? '';
+              addComment(session, file.path, 'new', line, line, quoted, smoke.comment);
+            });
           }
         });
       }
@@ -525,7 +588,24 @@ export function App() {
   // Findings filtered by the repo's dismissal memory (original indices preserved for threads).
   const activeDismissals = (active && dismissals[active.repoPath]) ?? [];
   const dismissedKeys = useMemo(() => new Set(activeDismissals.map(dismissalKey)), [activeDismissals]);
-  const activeFindings = active?.findings ?? [];
+  const storedFindings = active?.findings ?? [];
+
+  /**
+   * Findings with the open file's anchors corrected against its current content.
+   * Order and length are preserved — per-finding chat threads are keyed by index.
+   * Display-only: the session keeps the review-time line, so re-deriving is
+   * idempotent instead of compounding.
+   */
+  const activeFindings = useMemo(() => {
+    const content = openDiff?.newContent;
+    if (!content) return storedFindings;
+    return storedFindings.map((f) => {
+      if (f.file !== openDiff.path) return f;
+      const at = reanchor(content, { startLine: f.line, endLine: f.line }, f.snippet);
+      return at.startLine === f.line ? f : { ...f, line: at.startLine };
+    });
+  }, [storedFindings, openDiff]);
+
   const fileFindings = useMemo(
     () =>
       activeFindings.filter(
@@ -534,10 +614,18 @@ export function App() {
     [activeFindings, selectedFile, dismissedKeys],
   );
   const flaggedFiles = useMemo(() => new Set(activeFindings.map((f) => f.file)), [activeFindings]);
-  const fileComments = useMemo(
-    () => (active?.comments ?? []).filter((c) => c.file === selectedFile),
-    [active?.comments, selectedFile],
-  );
+
+  /** Comment threads for the open file, re-anchored the same way. */
+  const fileComments = useMemo(() => {
+    const mine = (active?.comments ?? []).filter((c) => c.file === selectedFile);
+    if (!openDiff) return mine;
+    return mine.map((c) => {
+      const content = c.side === 'old' ? openDiff.oldContent : openDiff.newContent;
+      if (!content) return c;
+      const at = reanchor(content, c, c.quoted);
+      return at.startLine === c.startLine && at.endLine === c.endLine ? c : { ...c, ...at };
+    });
+  }, [active?.comments, selectedFile, openDiff]);
   const conversationFiles = useMemo(() => conversationStates(active?.comments ?? []), [active?.comments]);
   const activeScope = active ? chatScope[active.key] : undefined;
   const activeStream = active ? streamText[active.key] ?? '' : '';
@@ -554,6 +642,7 @@ export function App() {
         onNewSession={newSession}
         onSelectSession={setActiveKey}
         onDeleteSession={deleteSession}
+        onRefreshSession={refreshSession}
         onRemoveRepo={removeRepo}
         onRefreshRepo={refreshRepo}
         onEditInstructions={setInstructionsRepo}
@@ -627,6 +716,9 @@ export function App() {
                 <DiffPane
                   target={targetOf(active)}
                   path={selectedFile}
+                  diff={openDiff}
+                  error={openDiffError}
+                  reloadKey={diffReloadKey}
                   generated={files.find((f) => f.path === selectedFile)?.generated}
                   findings={fileFindings}
                   comments={fileComments}
@@ -651,7 +743,8 @@ export function App() {
             <ResizeHandle onMouseDown={reviewPanel.startDrag} />
             <ReviewPanel
               width={reviewPanel.width}
-              session={active}
+              // Anchored findings, so the panel's line numbers match the diff's.
+              session={{ ...active, findings: activeFindings }}
               busy={!!chatBusy[active.key]}
               streamScope={activeScope}
               streamText={activeStream}

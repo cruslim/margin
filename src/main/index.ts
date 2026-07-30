@@ -130,7 +130,9 @@ app.whenReady().then(async () => {
     // Materialize the file with current values first — it may not exist yet,
     // and a fresh copy gives the editor every key (defaults included).
     await storage.saveSettings(await storage.loadSettings());
-    await shell.openPath(storage.settingsFilePath());
+    // openPath reports failure as a returned string, not a rejection.
+    const openError = await shell.openPath(storage.settingsFilePath());
+    if (openError) throw new Error(openError);
   });
   ipcMain.handle('settings:save', (_e, settings: AppSettings) => storage.saveSettings(settings));
   ipcMain.handle('storage:load', () => storage.loadState());

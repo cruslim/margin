@@ -81,6 +81,24 @@ export const PRESET_THEMES: Theme[] = [
   },
 ];
 
+/**
+ * Normalize theme settings from disk — settings.json is hand-editable, so
+ * malformed shapes (custom as an object, entries without a name) must degrade
+ * to defaults instead of crashing resolveTheme.
+ */
+export function sanitizeThemeSettings(stored: unknown): ThemeSettings {
+  const t = (stored && typeof stored === 'object' ? stored : {}) as Partial<ThemeSettings>;
+  const custom = Array.isArray(t.custom)
+    ? t.custom
+        .filter(
+          (x): x is Theme =>
+            !!x && typeof x === 'object' && typeof x.name === 'string' && !!x.colors && typeof x.colors === 'object',
+        )
+        .map((x) => ({ name: x.name, mode: x.mode === 'light' ? ('light' as const) : ('dark' as const), colors: { ...x.colors } }))
+    : [];
+  return { active: typeof t.active === 'string' ? t.active : PRESET_THEMES[0].name, custom };
+}
+
 /** Custom themes shadow presets with the same name; unknown/missing falls back to the first preset. */
 export function resolveTheme(themes: ThemeSettings | undefined): Theme {
   const all = [...(themes?.custom ?? []), ...PRESET_THEMES];

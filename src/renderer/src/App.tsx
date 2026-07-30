@@ -72,12 +72,15 @@ export function App() {
   // reapplying the saved theme also reverts any live preview from the editor.
   useEffect(() => {
     if (settingsOpen) return;
-    window.margin.getSettings().then((s) => {
-      setAgentNames(s.agents.filter((a) => a.name.trim() && a.instructions.trim()).map((a) => a.name.trim()));
-      const theme = resolveTheme(s.themes);
-      applyTheme(theme);
-      setThemeMode(theme.mode);
-    });
+    window.margin
+      .getSettings()
+      .then((s) => {
+        setAgentNames(s.agents.filter((a) => a.name.trim() && a.instructions.trim()).map((a) => a.name.trim()));
+        const theme = resolveTheme(s.themes);
+        applyTheme(theme);
+        setThemeMode(theme.mode);
+      })
+      .catch(() => {});
   }, [settingsOpen]);
   const loaded = useRef(false);
   // True until persisted state has arrived — renders the boot mark instead of

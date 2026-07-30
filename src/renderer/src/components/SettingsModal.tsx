@@ -182,7 +182,7 @@ export function SettingsModal(props: { onClose: () => void }) {
           <button
             className="icon-btn settings-json"
             title="Edit the raw file — unsaved changes in this dialog are not written, and manual edits apply the next time settings are read"
-            onClick={() => window.margin.openSettingsFile()}
+            onClick={() => window.margin.openSettingsFile().catch((err) => window.alert(String(err)))}
           >
             settings.json
           </button>
@@ -208,6 +208,9 @@ function ThemeSection(props: { themes: ThemeSettings; onChange: (themes: ThemeSe
   };
 
   const updateCustom = (patch: Partial<Theme>) => {
+    // Themes are located by name — a rename onto an existing name would make
+    // later edits land on the wrong theme, so ignore colliding renames.
+    if (patch.name && allThemes.some((t, i) => i !== customIdx && t.name === patch.name)) return;
     const custom = props.themes.custom.map((t, i) => (i === customIdx ? { ...t, ...patch } : t));
     setThemes({ active: patch.name ?? props.themes.active, custom });
   };

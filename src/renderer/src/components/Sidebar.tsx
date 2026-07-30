@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { BranchSelect } from './BranchSelect.js';
-import type { RepoInfo } from '../../../shared/ipc.js';
+import type { CommitInfo, RepoInfo } from '../../../shared/ipc.js';
 import type { Session } from '../App.js';
 import { sessionTitle } from '../App.js';
 
@@ -22,6 +22,8 @@ export function Sidebar(props: {
   onDeleteSession: (key: string) => void;
   /** Re-read this branch's changeset (picks up commits made since it was opened). */
   onRefreshSession: (key: string) => Promise<void>;
+  /** Commits on the selected branch, listed under its row. */
+  activeCommits: CommitInfo[];
   onRemoveRepo: (path: string) => void;
   onRefreshRepo: (path: string) => Promise<void>;
   onEditInstructions: (repo: RepoInfo) => void;
@@ -102,8 +104,8 @@ export function Sidebar(props: {
             {props.sessions
               .filter((s) => s.repoPath === repo.path)
               .map((s) => (
+                <Fragment key={s.key}>
                 <div
-                  key={s.key}
                   className={`session-row ${s.key === props.activeKey ? 'selected' : ''}`}
                   onClick={() => props.onSelectSession(s.key)}
                 >
@@ -132,6 +134,10 @@ export function Sidebar(props: {
                     ✕
                   </button>
                 </div>
+                {s.key === props.activeKey && s.headRef && (
+                  <CommitList commits={props.activeCommits} baseRef={s.baseRef} />
+                )}
+                </Fragment>
               ))}
           </div>
         ))}
@@ -140,6 +146,30 @@ export function Sidebar(props: {
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * Commits on the selected branch. Read-only orientation — the sidebar is narrow,
+ * so each row is sha + subject and the full detail goes in the tooltip.
+ */
+function CommitList(props: { commits: CommitInfo[]; baseRef: string }) {
+  if (props.commits.length === 0) {
+    return <div className="commit-list empty-note">No commits ahead of {props.baseRef}</div>;
+  }
+  return (
+    <div className="commit-list">
+      {props.commits.map((c) => (
+        <div
+          key={c.sha}
+          className="commit-row"
+          title={`${c.sha}  ${c.subject}\n${c.author} · ${new Date(c.date).toLocaleString()}`}
+        >
+          <span className="commit-sha">{c.sha}</span>
+          <span className="commit-subject">{c.subject}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 

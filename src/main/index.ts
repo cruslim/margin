@@ -66,7 +66,7 @@ if (app.isPackaged) {
 // packaged app's productName is "Margin", which would otherwise move
 // userData and orphan existing sessions.
 app.setPath('userData', join(app.getPath('appData'), 'margin'));
-import { openRepo, changedFiles, fileDiff, applyPatch } from './gitService.js';
+import { openRepo, changedFiles, branchCommits, fileDiff, applyPatch } from './gitService.js';
 import { runReview } from '../engine/review.js';
 import { toAgentDefinitions } from '../engine/agents.js';
 import { chat } from '../engine/chat.js';
@@ -116,6 +116,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('repo:open', (_e, path: string) => openRepo(path));
   ipcMain.handle('diff:files', (_e, target: ReviewTarget) => changedFiles(target));
+  ipcMain.handle('git:commits', (_e, target: ReviewTarget) => branchCommits(target));
   ipcMain.handle('diff:file', (_e, target: ReviewTarget, path: string) => fileDiff(target, path));
 
   ipcMain.handle('settings:get', () => storage.loadSettings());

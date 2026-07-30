@@ -3,6 +3,7 @@ import type {
   ChangedFile,
   ChatMessage,
   Comment,
+  CommitInfo,
   DismissedFinding,
   FileDiff,
   Finding,
@@ -53,6 +54,8 @@ export function App() {
   // anchors the diff uses or the two disagree about where a finding is.
   const [openDiff, setOpenDiff] = useState<FileDiff | null>(null);
   const [openDiffError, setOpenDiffError] = useState<string | null>(null);
+  /** Commits on the active branch, listed under its row in the sidebar. */
+  const [branchCommits, setBranchCommits] = useState<CommitInfo[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [chatBusy, setChatBusy] = useState<Record<string, boolean>>({});
   const [streamText, setStreamText] = useState<Record<string, string>>({});
@@ -139,6 +142,23 @@ export function App() {
       cancelled = true;
     };
   }, [activeKey, active?.repoPath, active?.baseRef, active?.headRef]);
+
+  // Commits on the active branch. Keyed on the same things as the file list plus
+  // the refresh counter, so ↻ re-reads the commit list along with the changeset.
+  useEffect(() => {
+    if (!active?.headRef) {
+      setBranchCommits([]);
+      return;
+    }
+    let cancelled = false;
+    window.margin
+      .branchCommits(targetOf(active))
+      .then((c) => !cancelled && setBranchCommits(c))
+      .catch(() => !cancelled && setBranchCommits([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [activeKey, active?.repoPath, active?.baseRef, active?.headRef, diffReloadKey]);
 
   // Load the open file's diff. Refetches on an explicit refresh even when the
   // path is unchanged, since the content behind it may have moved.
@@ -670,6 +690,7 @@ export function App() {
         onSelectSession={setActiveKey}
         onDeleteSession={deleteSession}
         onRefreshSession={refreshSession}
+        activeCommits={branchCommits}
         onRemoveRepo={removeRepo}
         onRefreshRepo={refreshRepo}
         onEditInstructions={setInstructionsRepo}

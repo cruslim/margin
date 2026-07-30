@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { hasGeneratedMarker, isGeneratedPath } from '../shared/generated.js';
-import type { ChangedFile, FileDiff, RepoInfo } from '../shared/ipc.js';
+import type { ChangedFile, CommitInfo, FileDiff, RepoInfo } from '../shared/ipc.js';
 import type { ReviewTarget } from '../engine/types.js';
 import { untrackedFileDiff, untrackedPaths } from '../engine/worktree.js';
 
@@ -56,6 +56,47 @@ export async function changedFiles(target: ReviewTarget): Promise<ChangedFile[]>
   // After the untracked pass, so a brand-new generated file gets flagged too.
   await markGenerated(target, files);
   return files;
+}
+
+/**
+ * Cap on commits listed for a branch. A long-lived branch against an old base
+ * can have hundreds; the list is for orientation, not history spelunking.
+ */
+const MAX_COMMITS = 200;
+// Unit separator between fields, record separator between commits — neither can
+// appear in a commit subject, unlike newlines.
+const COMMIT_FORMAT = '%h%x1f%s%x1f%an%x1f%aI%x1e';
+
+/** Parse `git log --format=COMMIT_FORMAT` output. Exported for tests. */
+export function parseCommitLog(out: string): CommitInfo[] {
+  return out
+    .split('\x1e')
+    .map((record) => record.replace(/^\n/, ''))
+    .filter((record) => record.trim())
+    .map((record) => {
+      const [sha, subject, author, date] = record.split('\x1f');
+      return { sha, subject, author, date };
+    });
+}
+
+/**
+ * Commits on the branch that aren't in its base (two-dot: the branch's own
+ * work). Working-tree targets have none by definition — the changes under
+ * review are uncommitted.
+ */
+export async function branchCommits(target: ReviewTarget): Promise<CommitInfo[]> {
+  if (!target.headRef) return [];
+  try {
+    const out = await git(target.repoPath, [
+      'log',
+      `${target.baseRef}..${target.headRef}`,
+      `--max-count=${MAX_COMMITS}`,
+      `--format=${COMMIT_FORMAT}`,
+    ]);
+    return parseCommitLog(out);
+  } catch {
+    return []; // unknown ref (branch deleted or renamed) — not worth failing the view
+  }
 }
 
 /** Files to sniff before giving up and going on path patterns alone. */

@@ -5,6 +5,7 @@ const api: MarginApi = {
   pickRepo: () => ipcRenderer.invoke('repo:pick'),
   openRepo: (path) => ipcRenderer.invoke('repo:open', path),
   changedFiles: (target) => ipcRenderer.invoke('diff:files', target),
+  branchCommits: (target) => ipcRenderer.invoke('git:commits', target),
   fileDiff: (target, path) => ipcRenderer.invoke('diff:file', target, path),
   runReview: (sessionKey, target, opts) => ipcRenderer.invoke('review:run', sessionKey, target, opts),
   onChatDelta: (cb) => {

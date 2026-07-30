@@ -6,6 +6,7 @@ import type { ChatScope } from '../App.js';
 import { dismissalKey } from '../App.js';
 import { FindingCard } from './FindingCard.js';
 import { GenBadge } from './FileList.js';
+import { reanchor } from './reanchor.js';
 import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
 
 interface LineExtend {
@@ -114,6 +115,31 @@ export function DiffPane(props: {
     };
   }, [pendingRange]);
 
+  // Annotations are re-anchored by their quoted source before they're placed:
+  // stored line numbers go stale as soon as the file moves under them (a new
+  // commit, a refresh, a re-review). Display-only — the stored anchor is left
+  // alone so the next render re-derives from it instead of compounding drift.
+  const anchoredComments = useMemo(
+    () =>
+      props.comments.map((c) => {
+        const content = c.side === 'old' ? diff?.oldContent : diff?.newContent;
+        if (!content) return c;
+        const at = reanchor(content, c, c.quoted);
+        return at.startLine === c.startLine && at.endLine === c.endLine ? c : { ...c, ...at };
+      }),
+    [props.comments, diff?.oldContent, diff?.newContent],
+  );
+
+  const anchoredFindings = useMemo(
+    () =>
+      props.findings.map((f) => {
+        if (!diff?.newContent) return f;
+        const at = reanchor(diff.newContent, { startLine: f.line, endLine: f.line }, f.snippet);
+        return at.startLine === f.line ? f : { ...f, line: at.startLine };
+      }),
+    [props.findings, diff?.newContent],
+  );
+
   // Inline extends: findings anchor to the new side; comments to either side.
   const extendData = useMemo(() => {
     const oldFile: Record<number, { data: LineExtend }> = {};
@@ -123,10 +149,10 @@ export function DiffPane(props: {
       bucket[line] ??= { data: { comments: [] } };
       return bucket[line].data;
     };
-    for (const f of props.findings) at('new', f.line).finding = f;
-    for (const c of props.comments) at(c.side, c.endLine).comments.push(c);
+    for (const f of anchoredFindings) at('new', f.line).finding = f;
+    for (const c of anchoredComments) at(c.side, c.endLine).comments.push(c);
     return { oldFile, newFile };
-  }, [props.findings, props.comments]);
+  }, [anchoredFindings, anchoredComments]);
 
   const quotedLines = (side: SplitSide, startLine: number, endLine: number): string => {
     const content = side === SplitSide.old ? diff?.oldContent : diff?.newContent;

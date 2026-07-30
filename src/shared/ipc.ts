@@ -44,6 +44,12 @@ export interface Comment {
   startLine: number;
   endLine: number;
   messages: ChatMessage[];
+  /**
+   * The source text these lines held when the thread was started, used to
+   * re-anchor the thread after the file moves under it. Absent on threads
+   * created before this was recorded — those keep their stored line numbers.
+   */
+  quoted?: string;
   /** Collapsed to just the header row in the diff. */
   collapsed?: boolean;
   /** Conversation marked as resolved (GitHub-style). Resolving also collapses the thread. */

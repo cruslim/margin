@@ -428,6 +428,8 @@ export function App() {
         side,
         startLine,
         endLine,
+        // Kept so the thread can re-anchor itself once the file shifts.
+        quoted: quoted || undefined,
         messages: [{ role: 'user', text, at: Date.now() }],
       };
       patchSession(session.key, (s) => ({ comments: [...(s.comments ?? []), comment] }));

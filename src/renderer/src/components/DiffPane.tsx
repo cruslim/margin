@@ -84,6 +84,7 @@ export function DiffPane(props: {
   // underlying file changes out from under it.
   useEffect(() => {
     setPendingRange(null);
+    setRangeAgent('');
   }, [props.path, props.reloadKey]);
 
   // Keep the drag-selected rows visibly lit while the range composer is open

@@ -55,8 +55,13 @@ export async function chat(
     : mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
 
   // Subagents (and the Task tool that spawns them) are only exposed on turns
-  // that explicitly target an agent, so plain turns stay deterministic.
-  const delegate = opts.agent && opts.agents?.[opts.agent] ? opts.agent : undefined;
+  // that explicitly target an agent, so plain turns stay deterministic. A
+  // targeted agent that is no longer configured is an error — silently
+  // answering as the plain reviewer would misattribute the reply.
+  if (opts.agent && !opts.agents?.[opts.agent]) {
+    throw new Error(`Unknown specialist agent "${opts.agent}" — it may have been removed from settings.`);
+  }
+  const delegate = opts.agent;
 
   const stream = query({
     prompt: delegate ? delegationPrompt(delegate, message) : message,

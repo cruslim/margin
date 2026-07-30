@@ -3,8 +3,17 @@ import type { AppSettings } from '../../../shared/ipc.js';
 import { PRESET_THEMES, resolveTheme, THEME_TOKENS, type Theme, type ThemeSettings } from '../../../shared/themes.js';
 import { applyTheme } from '../theme.js';
 
+type SettingsTab = 'reviewers' | 'agents' | 'themes';
+
+const TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: 'reviewers', label: 'Reviewers' },
+  { id: 'agents', label: 'Agents' },
+  { id: 'themes', label: 'Themes' },
+];
+
 export function SettingsModal(props: { onClose: () => void }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [tab, setTab] = useState<SettingsTab>('reviewers');
 
   useEffect(() => {
     window.margin.getSettings().then(setSettings);
@@ -20,8 +29,19 @@ export function SettingsModal(props: { onClose: () => void }) {
 
   return (
     <div className="modal-overlay" onClick={props.onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Additional reviewers</h2>
+      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Settings</h2>
+        <div className="panel-tabs settings-tabs">
+          {TABS.map((t) => (
+            <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="settings-body">
+        {tab === 'reviewers' && (
+        <>
         <p className="modal-note">
           Extra finders run alongside the Claude reviewer on every review; their findings are tagged with
           their source. Different model families catch different things.
@@ -98,7 +118,10 @@ export function SettingsModal(props: { onClose: () => void }) {
             </label>
           </div>
         </section>
+        </>
+        )}
 
+        {tab === 'agents' && (
         <section className="settings-section">
           <div className="settings-toggle">
             Specialist agents <span className="settings-hint">(assignable per comment thread — the reviewer delegates the thread to them; read-only tools)</span>
@@ -150,10 +173,19 @@ export function SettingsModal(props: { onClose: () => void }) {
             + Add agent
           </button>
         </section>
+        )}
 
-        <ThemeSection themes={s.themes} onChange={(themes) => setSettings({ ...s, themes })} />
+        {tab === 'themes' && <ThemeSection themes={s.themes} onChange={(themes) => setSettings({ ...s, themes })} />}
+        </div>
 
         <div className="modal-actions">
+          <button
+            className="icon-btn settings-json"
+            title="Edit the raw file — unsaved changes in this dialog are not written, and manual edits apply the next time settings are read"
+            onClick={() => window.margin.openSettingsFile()}
+          >
+            settings.json
+          </button>
           <button className="icon-btn" onClick={props.onClose}>Cancel</button>
           <button className="run-btn small" onClick={save}>Save</button>
         </div>

@@ -199,6 +199,8 @@ export interface MarginApi {
    */
   applyPatch(repoPath: string, patch: string): Promise<{ ok: boolean; error?: string; note?: string }>;
   getSettings(): Promise<AppSettings>;
+  /** Open settings.json in the OS default editor (written first so every key is present). */
+  openSettingsFile(): Promise<void>;
   saveSettings(settings: AppSettings): Promise<void>;
   loadState(): Promise<PersistedState>;
   saveRepo(repo: RepoInfo): Promise<void>;

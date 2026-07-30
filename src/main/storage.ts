@@ -42,6 +42,11 @@ async function readJson<T>(path: string): Promise<T | null> {
   }
 }
 
+/** Absolute path of settings.json, for the "open in editor" affordance. */
+export function settingsFilePath(): string {
+  return settingsFile();
+}
+
 function settingsFile(): string {
   return join(app.getPath('userData'), 'settings.json');
 }

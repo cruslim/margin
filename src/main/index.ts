@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -126,6 +126,12 @@ app.whenReady().then(async () => {
   ipcMain.handle('diff:file', (_e, target: ReviewTarget, path: string) => fileDiff(target, path));
 
   ipcMain.handle('settings:get', () => storage.loadSettings());
+  ipcMain.handle('settings:openFile', async () => {
+    // Materialize the file with current values first — it may not exist yet,
+    // and a fresh copy gives the editor every key (defaults included).
+    await storage.saveSettings(await storage.loadSettings());
+    await shell.openPath(storage.settingsFilePath());
+  });
   ipcMain.handle('settings:save', (_e, settings: AppSettings) => storage.saveSettings(settings));
   ipcMain.handle('storage:load', () => storage.loadState());
   ipcMain.handle('storage:saveRepo', (_e, repo: RepoInfo) => storage.saveRepo(repo));

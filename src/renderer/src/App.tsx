@@ -321,6 +321,15 @@ export function App() {
         }));
         return result;
       } catch (err) {
+        // A delta review with nothing new arrives through the error path, but
+        // it's an up-to-date state, not a failure — keep the prior findings.
+        if (String(err).includes('No new changes since the last review')) {
+          patchSession(session.key, (s) => ({
+            status: 'done',
+            transcript: [...s.transcript, 'Already up to date — no new commits since the last review.'],
+          }));
+          return null;
+        }
         patchSession(session.key, { status: 'error', error: String(err) });
         return null;
       }

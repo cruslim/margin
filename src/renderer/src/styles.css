@@ -118,6 +118,22 @@ body.resizing * { pointer-events: none; }
 }
 .commit-sha { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex-shrink: 0; }
 .commit-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-row:hover .commit-subject,
+.commit-row:hover .commit-sha { color: var(--text); }
+/* Fixed to the viewport so the sidebar's scroll container can't clip it. */
+.commit-tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: 420px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none; /* never steals the hover it was opened by */
+}
+.commit-tooltip-subject { color: var(--text); font-size: 12px; }
+.commit-tooltip-meta { color: var(--text-dim); font-size: 11px; margin-top: 3px; }
 .session-row:hover { background: var(--bg-raised); }
 .session-row.selected { background: var(--bg-raised); outline: 1px solid var(--border); }
 .session-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -154,6 +154,10 @@ export function Sidebar(props: {
  * so each row is sha + subject and the full detail goes in the tooltip.
  */
 function CommitList(props: { commits: CommitInfo[]; baseRef: string }) {
+  // Own hover card rather than `title`: the native tooltip waits a second or
+  // more, and it's the truncated subject people need to read straight away.
+  const [hover, setHover] = useState<{ commit: CommitInfo; top: number; left: number } | null>(null);
+
   if (props.commits.length === 0) {
     return <div className="commit-list empty-note">No commits ahead of {props.baseRef}</div>;
   }
@@ -163,15 +167,36 @@ function CommitList(props: { commits: CommitInfo[]; baseRef: string }) {
         <div
           key={c.sha}
           className="commit-row"
-          title={`${c.sha}  ${c.subject}\n${c.author} · ${new Date(c.date).toLocaleString()}`}
+          onMouseEnter={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setHover({
+              commit: c,
+              // Fixed to the viewport, so the sidebar's scroll container can't
+              // clip it; clamped so a row near the bottom stays on screen.
+              top: Math.min(r.top - 4, window.innerHeight - TOOLTIP_MAX_HEIGHT),
+              left: r.right + 10,
+            });
+          }}
+          onMouseLeave={() => setHover((h) => (h?.commit.sha === c.sha ? null : h))}
         >
           <span className="commit-sha">{c.sha}</span>
           <span className="commit-subject">{c.subject}</span>
         </div>
       ))}
+      {hover && (
+        <div className="commit-tooltip" style={{ top: hover.top, left: hover.left }}>
+          <div className="commit-tooltip-subject">{hover.commit.subject}</div>
+          <div className="commit-tooltip-meta">
+            {hover.commit.sha} · {hover.commit.author} · {new Date(hover.commit.date).toLocaleString()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+/** Rough tooltip height, for keeping it on screen near the window's bottom edge. */
+const TOOLTIP_MAX_HEIGHT = 96;
 
 function NewReviewForm(props: {
   repo: RepoInfo;

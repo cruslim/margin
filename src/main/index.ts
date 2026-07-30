@@ -360,6 +360,13 @@ app.whenReady().then(() => {
         }, 4000);
         captureAndQuit(win, 9000, 'did-finish-load composer');
       } else {
+        // Same JS hook the run/comment paths expose, for driving the UI without
+        // spending a review or a chat turn.
+        if (process.env.MARGIN_SMOKE_JS) {
+          setTimeout(() => {
+            win.webContents.executeJavaScript(process.env.MARGIN_SMOKE_JS!).catch(() => {});
+          }, 3000);
+        }
         captureAndQuit(win, 4500, 'did-finish-load plain');
       }
     });

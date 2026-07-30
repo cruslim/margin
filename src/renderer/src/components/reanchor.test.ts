@@ -45,6 +45,20 @@ describe('reanchor', () => {
     });
   });
 
+  it('matches a snippet whose indentation was normalised away', () => {
+    // what a model actually returns for `  if (!x) return null;`
+    const shifted = file('// header', ...content.split('\n'));
+    expect(reanchor(shifted, { startLine: 4, endLine: 4 }, 'if (!x) return null;')).toEqual({
+      startLine: 5,
+      endLine: 5,
+    });
+  });
+
+  it('matches an unshifted snippet whose indentation differs', () => {
+    const anchor = { startLine: 4, endLine: 4 };
+    expect(reanchor(content, anchor, 'if (!x) return null;')).toEqual(anchor);
+  });
+
   it('keeps the anchor when the quoted code is gone', () => {
     expect(reanchor(content, { startLine: 4, endLine: 4 }, '  throw new Error("deleted");')).toEqual({
       startLine: 4,

@@ -18,8 +18,10 @@ export function reanchor(content: string, anchor: Anchor, quoted: string | undef
   // Nothing to match on, or a blank quote that would match anywhere.
   if (!quoted?.trim()) return anchor;
 
-  const lines = content.split('\n');
-  const wanted = quoted.split('\n');
+  // Compared trimmed: a finding's snippet comes back from the model with its
+  // indentation normalised away, so exact matching would never hit the file.
+  const lines = content.split('\n').map((l) => l.trim());
+  const wanted = quoted.split('\n').map((l) => l.trim());
   const span = wanted.length;
   const matchesAt = (i: number) => wanted.every((w, k) => lines[i + k] === w);
 

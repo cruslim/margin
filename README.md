@@ -85,7 +85,11 @@ npm run chat -- "Propose a fix for finding 1"
 
 ## Roadmap
 
-- [ ] Markdown export of a review
+- [ ] Agent bridge, step 1: live `.margin/review.md` export — open findings and unresolved
+      conversations written into the repo so a coding agent (e.g. Claude Code working on the same
+      branch) can pick them up ([design](docs/agent-bridge.md))
+- [ ] Agent bridge, step 2: MCP server — the coding agent reads threads, replies into them, and
+      resolves them from its side ([design](docs/agent-bridge.md))
 - [ ] Per-finder findings streaming
 - [ ] Multiple saved providers
 

@@ -159,14 +159,22 @@ export function App() {
    * file when it's still in the set, and bumps the diff key so the open file
    * refetches even though its path didn't change.
    */
-  const refreshFiles = useCallback(async () => {
-    if (!active) return;
-    const f = await window.margin.changedFiles(targetOf(active)).catch(() => null);
-    if (!f) return; // leave the current view alone rather than blanking it
-    setFiles(f);
-    setSelectedFile((prev) => (prev && f.some((x) => x.path === prev) ? prev : firstReadable(f)));
-    setDiffReloadKey((k) => k + 1);
-  }, [active]);
+  const refreshSession = useCallback(
+    async (key: string) => {
+      // A different branch: selecting it loads its changeset fresh anyway.
+      if (key !== activeKey) {
+        setActiveKey(key);
+        return;
+      }
+      if (!active) return;
+      const f = await window.margin.changedFiles(targetOf(active)).catch(() => null);
+      if (!f) return; // leave the current view alone rather than blanking it
+      setFiles(f);
+      setSelectedFile((prev) => (prev && f.some((x) => x.path === prev) ? prev : firstReadable(f)));
+      setDiffReloadKey((k) => k + 1);
+    },
+    [active, activeKey],
+  );
 
   const addRepo = useCallback(async () => {
     const repo = await window.margin.pickRepo();
@@ -634,6 +642,7 @@ export function App() {
         onNewSession={newSession}
         onSelectSession={setActiveKey}
         onDeleteSession={deleteSession}
+        onRefreshSession={refreshSession}
         onRemoveRepo={removeRepo}
         onRefreshRepo={refreshRepo}
         onEditInstructions={setInstructionsRepo}
@@ -699,7 +708,6 @@ export function App() {
                 flagged={flaggedFiles}
                 conversations={conversationFiles}
                 onSelect={setSelectedFile}
-                onRefresh={refreshFiles}
               />
             </nav>
             <ResizeHandle onMouseDown={filesPanel.startDrag} />

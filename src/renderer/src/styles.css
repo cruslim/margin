@@ -102,6 +102,8 @@ body.resizing * { pointer-events: none; }
 .session-row:hover .row-del,
 .repo-row:hover .row-del { visibility: visible; }
 .row-del:hover { color: var(--err); }
+/* Always visible, like the repo row's ↻ — it's the main action on this row. */
+.sidebar .icon-btn.row-refresh { font-size: 13px; padding: 2px 6px; }
 .session-row:hover { background: var(--bg-raised); }
 .session-row.selected { background: var(--bg-raised); outline: 1px solid var(--border); }
 .session-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -275,8 +277,6 @@ body.resizing * { pointer-events: none; }
   border-bottom: 1px solid var(--border);
 }
 .filelist-count { color: var(--text-dim); font-size: 11px; }
-.filelist-actions { display: flex; align-items: center; gap: 6px; }
-.filelist-actions > .icon-btn { display: flex; align-items: center; padding: 3px 6px; }
 .view-toggle { display: flex; gap: 2px; }
 .view-toggle .icon-btn { display: flex; align-items: center; padding: 3px 6px; }
 .view-toggle .icon-btn.active { background: var(--bg-raised); color: var(--text); }

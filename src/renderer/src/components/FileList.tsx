@@ -105,10 +105,7 @@ export function FileList(props: {
   flagged: Set<string>;
   conversations: Map<string, ConvoState>;
   onSelect: (path: string) => void;
-  /** Re-read the changeset from git (picks up new commits on branch sessions). */
-  onRefresh?: () => Promise<void> | void;
 }) {
-  const [refreshing, setRefreshing] = useState(false);
   const [mode, setMode] = useState<ViewMode>(
     () => (localStorage.getItem('margin.filelist.view') === 'list' ? 'list' : 'tree'),
   );
@@ -119,15 +116,6 @@ export function FileList(props: {
   const setView = (m: ViewMode) => {
     setMode(m);
     localStorage.setItem('margin.filelist.view', m);
-  };
-  const refresh = async () => {
-    if (!props.onRefresh || refreshing) return;
-    setRefreshing(true);
-    try {
-      await props.onRefresh();
-    } finally {
-      setRefreshing(false);
-    }
   };
   const toggleDir = (path: string) => {
     setCollapsed((prev) => {
@@ -193,33 +181,21 @@ export function FileList(props: {
         <span className="filelist-count">
           {props.files.length} file{props.files.length === 1 ? '' : 's'}
         </span>
-        <span className="filelist-actions">
-          {props.onRefresh && (
-            <button
-              className={`icon-btn ${refreshing ? 'spinning' : ''}`}
-              title="Refresh changed files"
-              disabled={refreshing}
-              onClick={refresh}
-            >
-              ↻
-            </button>
-          )}
-          <span className="view-toggle">
-            <button
-              className={`icon-btn ${mode === 'tree' ? 'active' : ''}`}
-              title="Tree view"
-              onClick={() => setView('tree')}
-            >
-              {TreeIcon}
-            </button>
-            <button
-              className={`icon-btn ${mode === 'list' ? 'active' : ''}`}
-              title="List view"
-              onClick={() => setView('list')}
-            >
-              {ListIcon}
-            </button>
-          </span>
+        <span className="view-toggle">
+          <button
+            className={`icon-btn ${mode === 'tree' ? 'active' : ''}`}
+            title="Tree view"
+            onClick={() => setView('tree')}
+          >
+            {TreeIcon}
+          </button>
+          <button
+            className={`icon-btn ${mode === 'list' ? 'active' : ''}`}
+            title="List view"
+            onClick={() => setView('list')}
+          >
+            {ListIcon}
+          </button>
         </span>
       </div>
       <div className="filelist-items">

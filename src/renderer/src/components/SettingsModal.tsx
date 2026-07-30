@@ -259,7 +259,7 @@ function ThemeSection(props: { themes: ThemeSettings; onChange: (themes: ThemeSe
               <label key={key} className="theme-token">
                 <input
                   type="color"
-                  value={active.colors[key]}
+                  value={active.colors[key] ?? PRESET_THEMES[0].colors[key]}
                   onChange={(e) => updateCustom({ colors: { ...active.colors, [key]: e.target.value } })}
                 />
                 {key}

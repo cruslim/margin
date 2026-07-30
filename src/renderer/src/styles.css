@@ -11,6 +11,7 @@
   --err: #f7768e;
   --crit: #ff5370;
   --accent-contrast: #10101a;
+  --icon: #8b8ca0;
   font-size: 13px;
 }
 
@@ -172,6 +173,11 @@ body.resizing * { pointer-events: none; }
 .icon-btn:hover { background: var(--bg-raised); color: var(--text); }
 /* SVG icons sit on the text baseline by default, which offsets them in the button. */
 .icon-btn svg { display: block; }
+/* Only true icon buttons take the icon tint — text-labeled .icon-btn actions
+   (Duplicate, Cancel, unified/split…) keep the muted text color. */
+.sidebar .icon-btn, .view-toggle .icon-btn, .comment-delete { color: var(--icon); }
+.sidebar .icon-btn:hover, .view-toggle .icon-btn:hover { color: var(--text); }
+.sidebar .icon-btn.row-del:hover { color: var(--err); }
 /* Glyph buttons in the sidebar (⚙ + ↻ ✕) read too small at body size. */
 .sidebar .icon-btn { font-size: 16px; padding: 3px 8px; }
 
@@ -626,7 +632,7 @@ td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
   display: flex;
   align-items: center;
   visibility: hidden;
-  color: var(--text-dim);
+  color: var(--icon);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 5px;

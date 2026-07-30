@@ -34,11 +34,18 @@ export function sessionTitle(s: Session): string {
   return s.headRef ?? 'uncommitted changes';
 }
 
+/** File to open by default: something hand-written — a lockfile is rarely what you came to read. */
+function firstReadable(files: ChangedFile[]): string | null {
+  return (files.find((f) => !f.generated) ?? files[0])?.path ?? null;
+}
+
 export function App() {
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [files, setFiles] = useState<ChangedFile[]>([]);
+  /** Bumped to force the open file's diff to refetch on an explicit refresh. */
+  const [diffReloadKey, setDiffReloadKey] = useState(0);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [chatBusy, setChatBusy] = useState<Record<string, boolean>>({});
   const [streamText, setStreamText] = useState<Record<string, string>>({});
@@ -111,14 +118,28 @@ export function App() {
       .then((f) => {
         if (cancelled) return;
         setFiles(f);
-        // Open on something hand-written; a lockfile is rarely what you came to read.
-        setSelectedFile((f.find((x) => !x.generated) ?? f[0])?.path ?? null);
+        setSelectedFile(firstReadable(f));
       })
       .catch(() => setFiles([]));
     return () => {
       cancelled = true;
     };
   }, [activeKey, active?.repoPath, active?.baseRef, active?.headRef]);
+
+  /**
+   * Re-read the changeset. Branch sessions diff `base...branch`, so git resolves
+   * the branch tip on every call — new commits show up here. Keeps the selected
+   * file when it's still in the set, and bumps the diff key so the open file
+   * refetches even though its path didn't change.
+   */
+  const refreshFiles = useCallback(async () => {
+    if (!active) return;
+    const f = await window.margin.changedFiles(targetOf(active)).catch(() => null);
+    if (!f) return; // leave the current view alone rather than blanking it
+    setFiles(f);
+    setSelectedFile((prev) => (prev && f.some((x) => x.path === prev) ? prev : firstReadable(f)));
+    setDiffReloadKey((k) => k + 1);
+  }, [active]);
 
   const addRepo = useCallback(async () => {
     const repo = await window.margin.pickRepo();
@@ -619,6 +640,7 @@ export function App() {
                 flagged={flaggedFiles}
                 conversations={conversationFiles}
                 onSelect={setSelectedFile}
+                onRefresh={refreshFiles}
               />
             </nav>
             <ResizeHandle onMouseDown={filesPanel.startDrag} />
@@ -627,6 +649,7 @@ export function App() {
                 <DiffPane
                   target={targetOf(active)}
                   path={selectedFile}
+                  reloadKey={diffReloadKey}
                   generated={files.find((f) => f.path === selectedFile)?.generated}
                   findings={fileFindings}
                   comments={fileComments}

@@ -275,6 +275,8 @@ body.resizing * { pointer-events: none; }
   border-bottom: 1px solid var(--border);
 }
 .filelist-count { color: var(--text-dim); font-size: 11px; }
+.filelist-actions { display: flex; align-items: center; gap: 6px; }
+.filelist-actions > .icon-btn { display: flex; align-items: center; padding: 3px 6px; }
 .view-toggle { display: flex; gap: 2px; }
 .view-toggle .icon-btn { display: flex; align-items: center; padding: 3px 6px; }
 .view-toggle .icon-btn.active { background: var(--bg-raised); color: var(--text); }

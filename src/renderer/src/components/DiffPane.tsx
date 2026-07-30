@@ -18,6 +18,8 @@ export function DiffPane(props: {
   path: string;
   /** File is auto-generated — flagged in the toolbar. */
   generated?: boolean;
+  /** Changes on an explicit refresh to refetch the diff even when the path hasn't. */
+  reloadKey?: number;
   findings: Finding[];
   comments: Comment[];
   busy: boolean;
@@ -81,7 +83,7 @@ export function DiffPane(props: {
     return () => {
       cancelled = true;
     };
-  }, [props.target.repoPath, props.target.baseRef, props.target.headRef, props.path]);
+  }, [props.target.repoPath, props.target.baseRef, props.target.headRef, props.path, props.reloadKey]);
 
   // Keep the drag-selected rows visibly lit while the range composer is open
   // (the lib clears its own selection highlight on mouseup).

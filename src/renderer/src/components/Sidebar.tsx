@@ -231,7 +231,11 @@ function NewReviewForm(props: {
         props.onSubmit(base, head === '__working__' ? null : head);
       }}
     >
-      <label>
+      {/* Not <label>: it wraps a custom dropdown, not a form control, and a click
+          anywhere inside a label is forwarded to its first labelable descendant —
+          here the dropdown's own trigger button, which reopened the menu the
+          instant picking an option closed it. */}
+      <span className="form-field">
         Review
         <BranchSelect
           value={head}
@@ -241,16 +245,16 @@ function NewReviewForm(props: {
           ]}
           onChange={setHead}
         />
-      </label>
+      </span>
       {head !== '__working__' && (
-        <label>
+        <span className="form-field">
           against
           <BranchSelect
             value={base}
             options={props.repo.branches.map((b) => ({ value: b, label: b }))}
             onChange={setBase}
           />
-        </label>
+        </span>
       )}
       <div className="form-actions">
         <button type="submit" className="run-btn small">Open</button>

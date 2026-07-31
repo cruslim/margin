@@ -37,6 +37,15 @@ function parseCrFinding(e: CrEvent): Finding {
   };
 }
 
+/** A healthy CLI run emits status/heartbeat events every few seconds; total silence means it's wedged. */
+const INACTIVITY_MS = 5 * 60_000;
+
+/** Test seam: override the spawned command and the inactivity window. */
+export interface CodeRabbitRunOptions {
+  inactivityMs?: number;
+  spawnOverride?: { command: string; args: string[] };
+}
+
 /**
  * Run the CodeRabbit CLI as an additional finder. NOTE: this sends the diff
  * to CodeRabbit's cloud — gated behind an explicit settings opt-in.
@@ -44,6 +53,7 @@ function parseCrFinding(e: CrEvent): Finding {
 export async function runCodeRabbitReview(
   target: ReviewTarget,
   onProgress?: (line: string) => void,
+  runOpts: CodeRabbitRunOptions = {},
 ): Promise<{ findings: Finding[] }> {
   let workDir = target.repoPath;
   let ownWorktree = false;
@@ -61,14 +71,31 @@ export async function runCodeRabbitReview(
     target.baseRef,
   ];
 
+  const inactivityMs = runOpts.inactivityMs ?? INACTIVITY_MS;
+  const { command, args: spawnArgs } = runOpts.spawnOverride ?? { command: 'coderabbit', args };
+
   try {
     return await new Promise((resolve, reject) => {
-      const child = spawn('coderabbit', args, { cwd: workDir, env: process.env });
+      const child = spawn(command, spawnArgs, { cwd: workDir, env: process.env });
       const findings: Finding[] = [];
       let buffer = '';
       let stderr = '';
 
+      // Inactivity watchdog: any output resets it, so long reviews are fine —
+      // only a process that goes completely silent (hung "connecting to review
+      // service") gets killed instead of pinning the whole review forever.
+      let watchdog: NodeJS.Timeout;
+      const resetWatchdog = () => {
+        clearTimeout(watchdog);
+        watchdog = setTimeout(() => {
+          child.kill();
+          reject(new Error(`coderabbit produced no output for ${Math.round(inactivityMs / 1000)}s — killed`));
+        }, inactivityMs);
+      };
+      resetWatchdog();
+
       child.stdout.on('data', (chunk: Buffer) => {
+        resetWatchdog();
         buffer += chunk.toString();
         let nl: number;
         while ((nl = buffer.indexOf('\n')) !== -1) {
@@ -86,10 +113,15 @@ export async function runCodeRabbitReview(
         }
       });
       child.stderr.on('data', (chunk: Buffer) => {
+        resetWatchdog();
         stderr += chunk.toString();
       });
-      child.on('error', (err) => reject(new Error(`coderabbit CLI: ${err.message}`)));
+      child.on('error', (err) => {
+        clearTimeout(watchdog);
+        reject(new Error(`coderabbit CLI: ${err.message}`));
+      });
       child.on('close', (code) => {
+        clearTimeout(watchdog);
         if (code === 0) resolve({ findings });
         else reject(new Error(`coderabbit exited ${code}: ${stderr.slice(0, 300)}`));
       });

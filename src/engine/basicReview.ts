@@ -120,6 +120,13 @@ ${fileSections.join('\n\n')}`;
           messages,
           ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
         }),
+        // A hung endpoint must fail the finder, not pin the whole review.
+        signal: AbortSignal.timeout(5 * 60_000),
+      }).catch((err: unknown) => {
+        if ((err as Error).name === 'TimeoutError') {
+          throw new Error(`${provider.model} endpoint produced no response for 5 minutes — gave up`);
+        }
+        throw err;
       });
       if (!res.ok) {
         const body = (await res.text()).slice(0, 300);

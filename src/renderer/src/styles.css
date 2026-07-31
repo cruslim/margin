@@ -155,6 +155,8 @@ body.resizing * { pointer-events: none; }
 .st-reviewing { color: var(--warn); }
 .st-done { color: var(--ok); }
 .st-error { color: var(--err); }
+/* A thread in this session is out with your own agent, awaiting its reply. */
+.session-external { color: var(--warn); font-size: 11px; flex-shrink: 0; }
 .badge {
   background: var(--accent);
   color: var(--accent-contrast);
@@ -287,6 +289,8 @@ body.resizing * { pointer-events: none; }
 }
 .run-btn:disabled { opacity: 0.55; cursor: default; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
+/* Names the axis a select controls — a bare dropdown leaves you guessing what it sets. */
+.labelled-select { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-dim); }
 .model-select {
   background: var(--bg);
   color: var(--text-dim);
@@ -538,6 +542,8 @@ body.resizing * { pointer-events: none; }
   padding: 0 5px;
   flex-shrink: 0;
 }
+/* Answered by your own agent rather than a Margin specialist — distinct color, same chip shape. */
+.comment-agent.external { color: var(--accent); border-color: var(--accent); }
 .agent-select {
   margin-left: auto;
   background: var(--bg);
@@ -604,6 +610,10 @@ body.resizing * { pointer-events: none; }
 .thread-actions button:hover { text-decoration: underline; }
 .thread-actions button:disabled { color: var(--text-dim); text-decoration: none; cursor: default; }
 .busy-dot { color: var(--text-dim); font-size: 11px; font-style: italic; }
+/* An external wait can run for minutes, so it gets a way out rather than just a spinner. */
+.waiting-external { display: flex; align-items: center; gap: 8px; }
+.stop-waiting { font-style: normal; font-size: 10px; padding: 1px 5px; }
+.stop-waiting:hover { color: var(--err); }
 .dismiss-btn { color: var(--text-dim) !important; }
 .dismiss-btn:hover { color: var(--err) !important; }
 .chat-msg.streaming { border-style: dashed; }
@@ -638,8 +648,10 @@ td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
 .range-composer .composer-range { margin-bottom: 6px; }
 .range-composer .chat-input { border-top: none; padding: 0; max-width: 720px; }
 
-.composer-range { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-dim); margin-bottom: 6px; }
-.composer-range input {
+.composer-range { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; font-size: 11.5px; color: var(--text-dim); margin-bottom: 6px; }
+/* Line range moved down beside Cancel/Comment; the answerer choice took the top row. */
+.composer-lines { display: flex; align-items: center; gap: 5px; margin-right: auto; font-size: 11.5px; color: var(--text-dim); }
+.composer-lines input {
   width: 64px;
   background: var(--bg);
   color: var(--text);
@@ -737,7 +749,12 @@ td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
   resize: vertical;
 }
 .chat-input textarea:focus { outline: 1px solid var(--accent); }
-.chat-input-actions { display: flex; justify-content: flex-end; align-items: center; gap: 14px; }
+/* Wraps rather than overflowing its container when the diff pane is narrow. */
+.chat-input-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px 14px; min-width: 0; }
+.chat-input-buttons { display: flex; align-items: center; gap: 14px; }
+.composer-answerer .agent-select { margin-left: 0; }
+.copy-prompt { display: flex; align-items: center; gap: 5px; font-size: 11.5px; white-space: nowrap; }
+.copy-prompt svg { display: block; }
 .chat-input-actions .icon-btn { font-size: 12px; }
 
 .log-pills {
@@ -800,7 +817,8 @@ td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
 .settings-hint { color: var(--text-dim); font-weight: 400; font-size: 11px; }
 .settings-fields { display: flex; flex-direction: column; gap: 8px; }
 .settings-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--text-dim); }
-.settings-fields input {
+.settings-fields input,
+.settings-fields select {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -809,7 +827,9 @@ td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
   font: inherit;
   font-size: 12.5px;
 }
-.settings-fields input:focus { outline: 1px solid var(--accent); }
+.settings-fields input:focus, .settings-fields select:focus { outline: 1px solid var(--accent); }
+/* Dropdowns shouldn't stretch the full field width like text inputs do. */
+.settings-fields select { align-self: flex-start; min-width: 220px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; }
 .settings-modal .modal-actions { border-top: 1px solid var(--border); padding-top: 14px; }
 .instructions-input {

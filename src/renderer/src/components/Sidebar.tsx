@@ -119,6 +119,10 @@ export function Sidebar(props: {
                 >
                   <span className={`session-status st-${s.status}`}>{STATUS_ICON[s.status]}</span>
                   <span className="session-label">{sessionTitle(s)}</span>
+                  {/* Something is out with your agent — visible without opening the session. */}
+                  {(s.comments ?? []).some((c) => c.pendingTurn != null) && (
+                    <span className="session-external" title="Waiting on your agent">⇄</span>
+                  )}
                   {s.findings.length > 0 && <span className="badge">{s.findings.length}</span>}
                   <button
                     className={`icon-btn row-refresh ${refreshing === s.key ? 'spinning' : ''}`}

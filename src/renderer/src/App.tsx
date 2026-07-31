@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  BridgeSession,
   ChangedFile,
   ChatMessage,
   Comment,
@@ -12,6 +13,7 @@ import type {
   Session,
 } from '../../shared/ipc.js';
 import { reanchor } from './components/reanchor.js';
+import { answererFromSetting } from './components/answerer.js';
 
 /** Which thread the in-flight chat turn belongs to, for routing streamed text. */
 export type ChatScope = { type: 'chat' } | { type: 'finding'; index: number } | { type: 'comment'; id: string };
@@ -33,6 +35,16 @@ export type { Session };
 
 export function targetOf(s: Session): ReviewTarget {
   return { repoPath: s.repoPath, baseRef: s.baseRef, headRef: s.headRef };
+}
+
+/** Sessions carry transcripts and findings; the bridge only needs the identity bits. */
+function bridgeSessionOf(s: Session): BridgeSession {
+  return { key: s.key, repoPath: s.repoPath, baseRef: s.baseRef, headRef: s.headRef };
+}
+
+/** Threads with a request sitting in the bridge inbox — what makes a session worth polling. */
+function pendingThreads(s: Session): Comment[] {
+  return (s.comments ?? []).filter((c) => c.pendingTurn != null);
 }
 
 export function sessionTitle(s: Session): string {
@@ -66,6 +78,8 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [instructionsRepo, setInstructionsRepo] = useState<RepoInfo | null>(null);
   const [agentNames, setAgentNames] = useState<string[]>([]);
+  /** Picker value new comment threads start on (AppSettings.defaultAnswerer). */
+  const [defaultAnswerer, setDefaultAnswerer] = useState('');
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>('dark');
 
   // Settings-derived state (agent names, theme); refresh after settings close —
@@ -78,7 +92,11 @@ export function App() {
       .getSettings()
       .then((s) => {
         if (cancelled) return;
-        setAgentNames(s.agents.filter((a) => a.name.trim() && a.instructions.trim()).map((a) => a.name.trim()));
+        const names = s.agents.filter((a) => a.name.trim() && a.instructions.trim()).map((a) => a.name.trim());
+        setAgentNames(names);
+        // Resolved against the live agent list, so a deleted specialist can't
+        // stay the default.
+        setDefaultAnswerer(answererFromSetting(s.defaultAnswerer, names));
         const theme = resolveTheme(s.themes);
         applyTheme(theme);
         setThemeMode(theme.mode);
@@ -532,6 +550,79 @@ export function App() {
     [appendToComment, patchSession, ensureSessionWorkdir],
   );
 
+  /** Patch one comment in place. */
+  const patchComment = useCallback(
+    (sessionKey: string, commentId: string, patch: Partial<Comment>) => {
+      patchSession(sessionKey, (s) => ({
+        comments: (s.comments ?? []).map((c) => (c.id === commentId ? { ...c, ...patch } : c)),
+      }));
+    },
+    [patchSession],
+  );
+
+  /**
+   * Hand a turn to the user's own agent: the request leaves as a file and the
+   * reply arrives whenever the agent writes one (see the bridge:reply listener
+   * below). Nothing is awaited and no AI call is made, so several threads can be
+   * out at once and the session stays usable.
+   */
+  const brokerTurn = useCallback(
+    async (session: Session, comment: Comment) => {
+      const turn = comment.messages.length;
+      patchComment(session.key, comment.id, { external: true, pendingTurn: turn });
+      try {
+        // Rebuilt field by field rather than passed as-is: IPC structured-clones
+        // its arguments, and a comment that has already crossed the boundary once
+        // comes back unclonable, so a thread's *second* turn would fail.
+        await window.margin.bridgeSubmit(bridgeSessionOf(session), {
+          commentId: comment.id,
+          turn,
+          file: comment.file,
+          side: comment.side,
+          startLine: comment.startLine,
+          endLine: comment.endLine,
+          quoted: comment.quoted,
+          messages: comment.messages.map((m) => ({ role: m.role, text: m.text, at: m.at })),
+        });
+      } catch (err) {
+        patchComment(session.key, comment.id, { pendingTurn: undefined });
+        appendToComment(session.key, comment.id, {
+          role: 'assistant',
+          text: `Error: could not hand this to your agent — ${String(err)}`,
+          at: Date.now(),
+        });
+      }
+    },
+    [appendToComment, patchComment],
+  );
+
+  // Replies from your agent, appended like any other message — the debounced
+  // session save picks them up with no extra work.
+  useEffect(() => {
+    return window.margin.onBridgeReply((sessionKey, commentId, text) => {
+      appendToComment(sessionKey, commentId, { role: 'assistant', text, at: Date.now() });
+      patchComment(sessionKey, commentId, { pendingTurn: undefined });
+    });
+  }, [appendToComment, patchComment]);
+
+  /** Hand over a thread as it stands — typically after reading Margin's answer to it. */
+  const handOff = useCallback(
+    (session: Session, comment: Comment) => brokerTurn(session, comment),
+    [brokerTurn],
+  );
+
+  /** Give up on an outstanding turn: off the agent's work list, and no longer pending. */
+  const stopWaiting = useCallback(
+    async (session: Session, comment: Comment) => {
+      const turn = comment.pendingTurn;
+      patchComment(session.key, comment.id, { pendingTurn: undefined });
+      if (turn != null) {
+        await window.margin.bridgeWithdraw(bridgeSessionOf(session), comment.id, turn).catch(() => {});
+      }
+    },
+    [patchComment],
+  );
+
   const addComment = useCallback(
     (
       session: Session,
@@ -541,9 +632,11 @@ export function App() {
       endLine: number,
       quoted: string,
       text: string,
-      agent?: string,
+      answerer: { agent?: string; external?: boolean } = {},
     ) => {
-      if (chatBusy[session.key]) return;
+      // An in-flight Margin turn is no reason to refuse a handoff — that path
+      // never touches the model.
+      if (chatBusy[session.key] && !answerer.external) return;
       const comment: Comment = {
         id: crypto.randomUUID(),
         file,
@@ -553,17 +646,22 @@ export function App() {
         // Kept so the thread can re-anchor itself once the file shifts.
         quoted: quoted || undefined,
         messages: [{ role: 'user', text, at: Date.now() }],
-        agent,
+        agent: answerer.agent,
+        external: answerer.external,
       };
       patchSession(session.key, (s) => ({ comments: [...(s.comments ?? []), comment] }));
+      if (answerer.external) {
+        brokerTurn(session, comment);
+        return;
+      }
       const lineDesc = startLine === endLine ? `line ${endLine}` : `lines ${startLine}-${endLine}`;
       const prompt =
         `The user commented on ${file}, ${lineDesc} (${side === 'old' ? 'old/removed side of the diff' : 'new version'}).` +
         (quoted ? `\nThe line(s) read:\n\`\`\`\n${quoted}\n\`\`\`` : '') +
         `\nChangeset under review: ${session.baseRef}...${session.headRef ?? 'working tree'}.\n\n${text}`;
-      runCommentTurn(session, comment.id, prompt, agent);
+      runCommentTurn(session, comment.id, prompt, answerer.agent);
     },
-    [chatBusy, patchSession, runCommentTurn],
+    [chatBusy, patchSession, runCommentTurn, brokerTurn],
   );
 
   const toggleCollapseFinding = useCallback(
@@ -597,24 +695,36 @@ export function App() {
   );
 
   const deleteComment = useCallback(
-    (session: Session, commentId: string) => {
+    (session: Session, comment: Comment) => {
       if (!window.confirm('Delete this comment thread?')) return;
       patchSession(session.key, (s) => ({
-        comments: (s.comments ?? []).filter((c) => c.id !== commentId),
+        comments: (s.comments ?? []).filter((c) => c.id !== comment.id),
       }));
+      // Don't leave an agent working on a thread that no longer exists.
+      if (comment.pendingTurn != null) {
+        window.margin.bridgeWithdraw(bridgeSessionOf(session), comment.id, comment.pendingTurn).catch(() => {});
+      }
     },
     [patchSession],
   );
 
   const replyComment = useCallback(
     (session: Session, comment: Comment, text: string) => {
-      if (chatBusy[session.key]) return;
-      appendToComment(session.key, comment.id, { role: 'user', text, at: Date.now() });
+      if (chatBusy[session.key] && !comment.external) return;
+      const msg: ChatMessage = { role: 'user', text, at: Date.now() };
+      appendToComment(session.key, comment.id, msg);
+      // A thread keeps its answerer, exactly as specialist threads do.
+      if (comment.external) {
+        // Brokered with this message included, so the turn number differs from the
+        // opening request's — a follow-up gets its own item instead of overwriting it.
+        brokerTurn(session, { ...comment, messages: [...comment.messages, msg] });
+        return;
+      }
       const prompt = `Continuing the comment thread on ${comment.file}:${comment.endLine} (${comment.side} side):\n\n${text}`;
       // Replies stay with the thread's specialist agent.
       runCommentTurn(session, comment.id, prompt, comment.agent);
     },
-    [chatBusy, appendToComment, runCommentTurn],
+    [chatBusy, appendToComment, runCommentTurn, brokerTurn],
   );
 
   // Smoke-test mode: preload a session for the configured repo, optionally auto-run the review.
@@ -666,7 +776,9 @@ export function App() {
             // source can't re-anchor, so an empty one wouldn't exercise the path.
             window.margin.fileDiff(targetOf(session), file.path).then((d) => {
               const quoted = d.newContent.split('\n')[line - 1] ?? '';
-              addComment(session, file.path, 'new', line, line, quoted, smoke.comment);
+              addComment(session, file.path, 'new', line, line, quoted, smoke.comment, {
+                external: smoke.external || undefined,
+              });
             });
           }
         });
@@ -716,6 +828,27 @@ export function App() {
     });
   }, [active?.comments, selectedFile, openDiff]);
   const conversationFiles = useMemo(() => conversationStates(active?.comments ?? []), [active?.comments]);
+
+  // Which outboxes main should poll — only sessions with a request actually out,
+  // so an idle app polls nothing. Registered by signature rather than array
+  // identity: `sessions` gets a new object on every state change, and
+  // re-registering restarts the poll.
+  const awaitingSessions = useMemo(
+    () => sessions.filter((s) => pendingThreads(s).length > 0).map(bridgeSessionOf),
+    [sessions],
+  );
+  const watchSignature = awaitingSessions.map((s) => `${s.key}|${s.repoPath}|${s.baseRef}|${s.headRef}`).join('\n');
+  useEffect(() => {
+    window.margin.bridgeWatch(awaitingSessions).catch(() => {});
+  }, [watchSignature]);
+
+  // Resolving the bridge directory also creates it, so it happens on demand —
+  // nothing lands in app data for a session that never uses the bridge.
+  const resolveBridgeDir = useCallback(
+    () => (active ? window.margin.bridgeDir(bridgeSessionOf(active)) : Promise.reject(new Error('no session'))),
+    [active],
+  );
+
   const activeScope = active ? chatScope[active.key] : undefined;
   const activeStream = active ? streamText[active.key] ?? '' : '';
   const deltaAvailable = !!(active?.lastReviewedSha && active.headRef && active.status === 'done');
@@ -763,18 +896,21 @@ export function App() {
               <span className="base-ref">vs {active.baseRef}</span>
             </div>
             <div className="topbar-actions">
-              <select
-                className="model-select"
-                title="Model for reviews and chat in this session"
-                value={active.modelChoice ?? ''}
-                onChange={(e) => patchSession(active.key, { modelChoice: e.target.value || undefined })}
-              >
-                <option value="">default model</option>
-                <option value="claude-fable-5">fable</option>
-                <option value="opus">opus</option>
-                <option value="sonnet">sonnet</option>
-                <option value="haiku">haiku</option>
-              </select>
+              <label className="labelled-select">
+                model
+                <select
+                  className="model-select"
+                  title="Model for reviews, session chat and finding threads — line comments handed to your agent don't use it"
+                  value={active.modelChoice ?? ''}
+                  onChange={(e) => patchSession(active.key, { modelChoice: e.target.value || undefined })}
+                >
+                  <option value="">default</option>
+                  <option value="claude-fable-5">fable</option>
+                  <option value="opus">opus</option>
+                  <option value="sonnet">sonnet</option>
+                  <option value="haiku">haiku</option>
+                </select>
+              </label>
               {deltaAvailable && (
                 <button
                   className="icon-btn"
@@ -823,17 +959,21 @@ export function App() {
                   findings={fileFindings}
                   comments={fileComments}
                   agents={agentNames}
+                  defaultAnswerer={defaultAnswerer}
                   themeMode={themeMode}
                   busy={!!chatBusy[active.key]}
                   streamScope={activeScope}
                   streamText={activeStream}
-                  onAddComment={(file, side, startLine, endLine, quoted, text, agent) =>
-                    addComment(active, file, side, startLine, endLine, quoted, text, agent)
+                  onAddComment={(file, side, startLine, endLine, quoted, text, answerer) =>
+                    addComment(active, file, side, startLine, endLine, quoted, text, answerer)
                   }
+                  resolveBridgeDir={resolveBridgeDir}
                   onReplyComment={(comment, text) => replyComment(active, comment, text)}
+                  onHandOff={(comment) => handOff(active, comment)}
+                  onStopWaiting={(comment) => stopWaiting(active, comment)}
                   onToggleCollapse={(comment) => toggleCollapseComment(active, comment.id)}
                   onToggleResolve={(comment) => toggleResolveComment(active, comment.id)}
-                  onDeleteComment={(comment) => deleteComment(active, comment.id)}
+                  onDeleteComment={(comment) => deleteComment(active, comment)}
                   collapsedFindings={active.collapsedFindings ?? {}}
                   onToggleFinding={(f) => toggleCollapseFinding(active, f)}
                   onApplyPatch={(patch, commentId) => applyPatchToComment(active, patch, commentId)}

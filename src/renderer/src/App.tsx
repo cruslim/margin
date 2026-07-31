@@ -28,7 +28,7 @@ import { Sidebar } from './components/Sidebar.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { InstructionsModal } from './components/InstructionsModal.js';
 import { DiffPane } from './components/DiffPane.js';
-import { ReviewPanel } from './components/ReviewPanel.js';
+import { FindingThread, ReviewPanel } from './components/ReviewPanel.js';
 import { FileList, conversationStates } from './components/FileList.js';
 import { ResizeHandle, usePanelCollapsed, usePanelWidth } from './components/Resizer.js';
 
@@ -645,9 +645,12 @@ export function App() {
    * reviewer restating it.
    */
   const handOffFinding = useCallback(
-    async (session: Session, finding: Finding, index: number) => {
+    async (session: Session, finding: Finding) => {
       const threadId = findingItemId(finding);
-      const messages = session.threads?.[index] ?? [];
+      // Derived, not passed in: the diff pane's findings are filtered to one file,
+      // so callers there have no index — and the id is stable enough to look up.
+      const index = session.findings.findIndex((f) => findingItemId(f) === threadId);
+      const messages = index < 0 ? [] : session.threads?.[index] ?? [];
       const turn = messages.length;
       patchSession(session.key, (s) => ({
         pendingFindings: { ...(s.pendingFindings ?? {}), [threadId]: turn },
@@ -674,11 +677,13 @@ export function App() {
           const { [threadId]: _failed, ...rest } = s.pendingFindings ?? {};
           return { pendingFindings: rest };
         });
-        appendChatMessage(
-          session.key,
-          { role: 'assistant', text: `Error: could not hand this to your agent — ${String(err)}`, at: Date.now() },
-          index,
-        );
+        if (index >= 0) {
+          appendChatMessage(
+            session.key,
+            { role: 'assistant', text: `Error: could not hand this to your agent — ${String(err)}`, at: Date.now() },
+            index,
+          );
+        }
       }
     },
     [appendChatMessage, patchSession],
@@ -955,6 +960,56 @@ export function App() {
     [active],
   );
 
+  /**
+   * One finding thread, rendered identically wherever it appears — the findings
+   * panel and the inline card in the diff are the same component with the same
+   * handlers, so an action can't exist in one place and not the other.
+   *
+   * The index is looked up rather than passed: the diff's findings are filtered to
+   * one file and re-anchored, so its callers have no index to give.
+   */
+  const renderFindingThread = useCallback(
+    (session: Session, finding: Finding, inline = false) => {
+      const id = findingItemId(finding);
+      const index = session.findings.findIndex((f) => findingItemId(f) === id);
+      const scope = chatScope[session.key];
+      return (
+        <FindingThread
+          key={id}
+          finding={finding}
+          inline={inline}
+          thread={session.threads?.[index] ?? []}
+          busy={!!chatBusy[session.key]}
+          collapsed={!!session.collapsedFindings?.[dismissalKey(finding)]}
+          onToggleCollapse={() => toggleCollapseFinding(session, finding)}
+          streaming={scope?.type === 'finding' && scope.index === index ? streamText[session.key] ?? '' : undefined}
+          onJump={() => setSelectedFile(finding.file)}
+          onDismiss={() => dismissFinding(session, finding)}
+          onReply={(text) => sendChat(session, text, index)}
+          onProposeFix={() => proposeFix(session, index)}
+          pending={session.pendingFindings?.[id] != null}
+          onHandOff={() => handOffFinding(session, finding)}
+          onStopWaiting={() => stopWaitingFinding(session, finding)}
+          resolveBridgeDir={resolveBridgeDir}
+          onApplyPatch={(patch) => applyPatch(session, patch, index)}
+        />
+      );
+    },
+    [
+      chatBusy,
+      chatScope,
+      streamText,
+      toggleCollapseFinding,
+      dismissFinding,
+      sendChat,
+      proposeFix,
+      handOffFinding,
+      stopWaitingFinding,
+      resolveBridgeDir,
+      applyPatch,
+    ],
+  );
+
   const activeScope = active ? chatScope[active.key] : undefined;
   const activeStream = active ? streamText[active.key] ?? '' : '';
   const deltaAvailable = !!(active?.lastReviewedSha && active.headRef && active.status === 'done');
@@ -1074,14 +1129,13 @@ export function App() {
                     addComment(active, file, side, startLine, endLine, quoted, text, answerer)
                   }
                   resolveBridgeDir={resolveBridgeDir}
+                  renderFinding={(f) => renderFindingThread(active, f, true)}
                   onReplyComment={(comment, text) => replyComment(active, comment, text)}
                   onHandOff={(comment) => handOff(active, comment)}
                   onStopWaiting={(comment) => stopWaiting(active, comment)}
                   onToggleCollapse={(comment) => toggleCollapseComment(active, comment.id)}
                   onToggleResolve={(comment) => toggleResolveComment(active, comment.id)}
                   onDeleteComment={(comment) => deleteComment(active, comment)}
-                  collapsedFindings={active.collapsedFindings ?? {}}
-                  onToggleFinding={(f) => toggleCollapseFinding(active, f)}
                   onApplyPatch={(patch, commentId) => applyPatchToComment(active, patch, commentId)}
                 />
               ) : (
@@ -1101,17 +1155,9 @@ export function App() {
               streamText={activeStream}
               dismissedKeys={dismissedKeys}
               dismissals={activeDismissals}
-              collapsedFindings={active.collapsedFindings ?? {}}
-              onToggleFinding={(f) => toggleCollapseFinding(active, f)}
-              onDismiss={(f) => dismissFinding(active, f)}
               onRestore={(key) => restoreDismissal(active.repoPath, key)}
-              onJumpToFinding={(f: Finding) => setSelectedFile(f.file)}
               onSendChat={(text, findingIndex) => sendChat(active, text, findingIndex)}
-              onProposeFix={(findingIndex) => proposeFix(active, findingIndex)}
-              pendingFindings={active.pendingFindings ?? {}}
-              onHandOffFinding={(f, index) => handOffFinding(active, f, index)}
-              onStopWaitingFinding={(f) => stopWaitingFinding(active, f)}
-              resolveBridgeDir={resolveBridgeDir}
+              renderFinding={(f) => renderFindingThread(active, f)}
               onApplyPatch={(patch, findingIndex) => applyPatch(active, patch, findingIndex)}
             />
           </div>

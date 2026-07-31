@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DiffViewWithMultiSelect, DiffModeEnum, SplitSide } from '@git-diff-view/react';
 import type { DiffViewWithMultiSelectRef } from '@git-diff-view/react';
 import type { Comment, FileDiff, Finding, ReviewTarget } from '../../../shared/ipc.js';
 import type { ChatScope } from '../App.js';
 import { dismissalKey } from '../App.js';
-import { FindingCard } from './FindingCard.js';
 import { GenBadge } from './FileList.js';
 import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
 import { agentValue, answererOf, ANSWER_EXTERNAL } from './answerer.js';
@@ -57,8 +56,12 @@ export function DiffPane(props: {
   onToggleCollapse: (comment: Comment) => void;
   onToggleResolve: (comment: Comment) => void;
   onDeleteComment: (comment: Comment) => void;
-  collapsedFindings: Record<string, boolean>;
-  onToggleFinding: (f: Finding) => void;
+  /**
+   * Renders a finding's inline card. Supplied by App rather than built here, so
+   * the inline card *is* the findings panel's thread — same actions, no second
+   * copy to drift out of step.
+   */
+  renderFinding: (f: Finding) => ReactNode;
   onApplyPatch: (patch: string, commentId: string) => void;
 }) {
   const { diff, error } = props;
@@ -288,14 +291,7 @@ export function DiffPane(props: {
                     }}
                   />
                 )}
-                {data.finding && (
-                  <FindingCard
-                    finding={data.finding}
-                    inline
-                    collapsed={!!props.collapsedFindings[dismissalKey(data.finding)]}
-                    onToggleCollapse={() => props.onToggleFinding(data.finding!)}
-                  />
-                )}
+                {data.finding && props.renderFinding(data.finding)}
                 {data.comments.map((c) => (
                   <CommentThread
                     key={c.id}

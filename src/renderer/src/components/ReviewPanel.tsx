@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ChatMessage, DismissedFinding, Finding } from '../../../shared/ipc.js';
 import type { ChatScope, Session } from '../App.js';
 import { dismissalKey } from '../App.js';
 import { FindingCard } from './FindingCard.js';
 import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
 import { CopyPromptButton } from './CopyPrompt.js';
-import { findingItemId } from '../../../shared/findingItem.js';
 
 const SEV_ORDER: Record<Finding['severity'], number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -36,18 +35,13 @@ export function ReviewPanel(props: {
   streamText: string;
   dismissedKeys: Set<string>;
   dismissals: DismissedFinding[];
-  collapsedFindings: Record<string, boolean>;
-  onToggleFinding: (f: Finding) => void;
-  onDismiss: (f: Finding) => void;
   onRestore: (key: string) => void;
-  onJumpToFinding: (f: Finding) => void;
   onSendChat: (text: string, findingIndex?: number) => void;
-  onProposeFix: (findingIndex: number) => void;
-  /** Findings out with your own agent, keyed by finding id → outstanding turn. */
-  pendingFindings: Record<string, number>;
-  onHandOffFinding: (f: Finding, findingIndex: number) => void;
-  onStopWaitingFinding: (f: Finding) => void;
-  resolveBridgeDir: () => Promise<string>;
+  /**
+   * Renders one finding's thread. Shared with the diff's inline card so both
+   * surfaces are the same component with the same handlers.
+   */
+  renderFinding: (f: Finding) => ReactNode;
   onApplyPatch: (patch: string, findingIndex?: number) => void;
 }) {
   const s = props.session;
@@ -127,30 +121,7 @@ export function ReviewPanel(props: {
               {sorted.length === 0 ? (
                 <div className="empty-note ok">No blocking findings — looks good.</div>
               ) : (
-                sorted.map(({ finding, index }) => (
-                  <FindingThread
-                    key={index}
-                    finding={finding}
-                    thread={s.threads?.[index] ?? []}
-                    busy={props.busy}
-                    collapsed={!!props.collapsedFindings[dismissalKey(finding)]}
-                    onToggleCollapse={() => props.onToggleFinding(finding)}
-                    streaming={
-                      props.streamScope?.type === 'finding' && props.streamScope.index === index
-                        ? props.streamText
-                        : undefined
-                    }
-                    onJump={() => props.onJumpToFinding(finding)}
-                    onDismiss={() => props.onDismiss(finding)}
-                    onReply={(text) => props.onSendChat(text, index)}
-                    onProposeFix={() => props.onProposeFix(index)}
-                    pending={props.pendingFindings[findingItemId(finding)] != null}
-                    onHandOff={() => props.onHandOffFinding(finding, index)}
-                    onStopWaiting={() => props.onStopWaitingFinding(finding)}
-                    resolveBridgeDir={props.resolveBridgeDir}
-                    onApplyPatch={(patch) => props.onApplyPatch(patch, index)}
-                  />
-                ))
+                sorted.map(({ finding }) => props.renderFinding(finding))
               )}
               {refuted.length > 0 && <RefutedSection refuted={refuted} />}
               {props.dismissals.length > 0 && (
@@ -206,7 +177,7 @@ export function ReviewPanel(props: {
   );
 }
 
-function FindingThread(props: {
+export function FindingThread(props: {
   finding: Finding;
   thread: ChatMessage[];
   busy: boolean;
@@ -223,14 +194,17 @@ function FindingThread(props: {
   onStopWaiting: () => void;
   resolveBridgeDir: () => Promise<string>;
   onApplyPatch: (patch: string) => void;
+  /** Rendered inline in the diff rather than in the findings panel. */
+  inline?: boolean;
 }) {
   const [replyOpen, setReplyOpen] = useState(false);
 
   if (props.collapsed) {
     return (
-      <div className="finding-thread">
+      <div className={`finding-thread ${props.inline ? 'inline' : ''}`}>
         <FindingCard
           finding={props.finding}
+          inline={props.inline}
           onJump={props.onJump}
           collapsed
           onToggleCollapse={props.onToggleCollapse}
@@ -240,8 +214,13 @@ function FindingThread(props: {
   }
 
   return (
-    <div className="finding-thread">
-      <FindingCard finding={props.finding} onJump={props.onJump} onToggleCollapse={props.onToggleCollapse} />
+    <div className={`finding-thread ${props.inline ? 'inline' : ''}`}>
+      <FindingCard
+        finding={props.finding}
+        inline={props.inline}
+        onJump={props.onJump}
+        onToggleCollapse={props.onToggleCollapse}
+      />
       {props.thread.length > 0 && (
         <div className="thread-msgs">
           {props.thread.map((m, i) => (

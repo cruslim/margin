@@ -6,6 +6,9 @@ import { branchDiff, createWorktree, resolveSha, workingTreeDiff } from './workt
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];
 
+/** Errors worth one automatic retry: server-side blips, not caller mistakes. */
+export const TRANSIENT_API_ERROR = /API Error: 5\d\d|internal server error|overloaded/i;
+
 const SYSTEM_PROMPT = `You are Margin, a code reviewer. You review a diff inside a checkout of the repository.
 
 Rules:
@@ -93,6 +96,12 @@ export async function runReview(
   let model = '';
   let usage: TokenUsage | null = null;
 
+  const runQuery = async (): Promise<void> => {
+  sessionId = '';
+  resultText = '';
+  costUsd = null;
+  model = '';
+  usage = null;
   const stream = query({
     prompt: reviewPrompt(diff, opts, projectInstructions),
     options: {
@@ -141,6 +150,18 @@ export async function runReview(
     // Some models' CLI sessions exit non-zero after already delivering the
     // result — don't discard a completed review over a shutdown error.
     if (!resultText) throw err;
+  }
+  };
+
+  try {
+    await runQuery();
+  } catch (err) {
+    // One automatic retry for server-side blips; caller mistakes (auth, bad
+    // ref, empty diff) and repeated failures stay immediate.
+    if (!TRANSIENT_API_ERROR.test(String(err))) throw err;
+    events.onProgress?.('[review] transient API error — retrying once in 5s…');
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await runQuery();
   }
 
   const parsed = parseReviewOutput(resultText);

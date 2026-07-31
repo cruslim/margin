@@ -4,6 +4,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { AppSettings, DismissedFinding, PersistedState, RepoInfo, Session } from '../shared/ipc.js';
 import { DEFAULT_SETTINGS } from '../shared/ipc.js';
+import { sanitizeThemeSettings } from '../shared/themes.js';
 
 /**
  * Plain-JSON persistence: one folder per repo, one folder per branch,
@@ -42,6 +43,11 @@ async function readJson<T>(path: string): Promise<T | null> {
   }
 }
 
+/** Absolute path of settings.json, for the "open in editor" affordance. */
+export function settingsFilePath(): string {
+  return settingsFile();
+}
+
 function settingsFile(): string {
   return join(app.getPath('userData'), 'settings.json');
 }
@@ -55,6 +61,8 @@ export async function loadSettings(): Promise<AppSettings> {
     // Defaults only seed pre-agents settings files; an explicit [] means the
     // user deleted them. Copy the defaults so callers never mutate the shared objects.
     agents: stored?.agents ?? DEFAULT_SETTINGS.agents.map((a) => ({ ...a })),
+    // settings.json is hand-editable — normalize instead of trusting the shape.
+    themes: sanitizeThemeSettings(stored?.themes),
   };
 }
 

@@ -1,4 +1,5 @@
 import type { DismissedFinding, Finding, ReviewResult, ReviewTarget } from '../engine/types.js';
+import type { ThemeSettings } from './themes.js';
 
 export interface ChangedFile {
   path: string;
@@ -125,6 +126,8 @@ export interface AppSettings {
   };
   /** Specialist subagents assignable to comment threads. */
   agents: Array<{ name: string; description: string; instructions: string; model?: string }>;
+  /** Active theme name + user-made themes (presets live in shared/themes.ts). */
+  themes: ThemeSettings;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -145,6 +148,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         'You are a performance specialist. Analyze the code you are asked about for algorithmic complexity, redundant work, N+1 patterns, unnecessary allocations, and blocking I/O on hot paths. Ground every claim in the actual code and quantify impact where possible.',
     },
   ],
+  themes: { active: 'Tokyo Night', custom: [] },
 };
 
 /** API exposed to the renderer via the preload bridge. */
@@ -195,6 +199,8 @@ export interface MarginApi {
    */
   applyPatch(repoPath: string, patch: string): Promise<{ ok: boolean; error?: string; note?: string }>;
   getSettings(): Promise<AppSettings>;
+  /** Open settings.json in the OS default editor (written first so every key is present). */
+  openSettingsFile(): Promise<void>;
   saveSettings(settings: AppSettings): Promise<void>;
   loadState(): Promise<PersistedState>;
   saveRepo(repo: RepoInfo): Promise<void>;

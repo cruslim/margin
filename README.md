@@ -19,6 +19,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 - **Generated files stay out of the way** — lockfiles, build output, snapshots, codegen, static-analysis baselines (mago/phpstan/psalm) and `@generated` banners are tagged `auto-generated`, dimmed and sorted last, and the reviewers are told not to report findings in them
 - **Per-repo instructions** — your own rules per repository, edited in the app (✎ on the repo row) and stored app-side, so the repo stays clean and they're deleted with the repo; a committed `.margin/margin.md` works too for team-shared rules. Both are injected into every review and into comment threads started before a review
 - **Model picker** — per-session default/fable/opus/sonnet/haiku for reviews and chat
+- **Themes** — Tokyo Night (default), Graphite, Nord, Gruvbox, and Paper (light) presets; duplicate any preset in settings to edit every color token with live preview (custom themes are plain JSON in `settings.json`)
 
 ## Requirements
 

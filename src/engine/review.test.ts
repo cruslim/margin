@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseReviewOutput } from './review.js';
+import { parseReviewOutput, TRANSIENT_API_ERROR } from './review.js';
 
 const finding = {
   file: 'src/a.ts',
@@ -38,5 +38,23 @@ describe('parseReviewOutput', () => {
     expect(() => parseReviewOutput('no json here')).toThrow(/no parseable review JSON/);
     // A JSON object of the wrong shape is not a review payload.
     expect(() => parseReviewOutput('{"foo": 1}')).toThrow(/no parseable review JSON/);
+  });
+});
+
+describe('TRANSIENT_API_ERROR', () => {
+  it('matches server-side blips worth a retry', () => {
+    expect(
+      TRANSIENT_API_ERROR.test(
+        'API Error: 500 {"type":"error","error":{"type":"api_error","message":"Internal server error"}}',
+      ),
+    ).toBe(true);
+    expect(TRANSIENT_API_ERROR.test('API Error: 529 overloaded_error')).toBe(true);
+    expect(TRANSIENT_API_ERROR.test('Error: Overloaded')).toBe(true);
+  });
+
+  it('does not match caller mistakes', () => {
+    expect(TRANSIENT_API_ERROR.test('No new changes since the last review.')).toBe(false);
+    expect(TRANSIENT_API_ERROR.test('API Error: 401 authentication_error')).toBe(false);
+    expect(TRANSIENT_API_ERROR.test('Diff is empty — nothing to review.')).toBe(false);
   });
 });

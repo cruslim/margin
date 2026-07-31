@@ -27,6 +27,8 @@ export function DiffPane(props: {
   comments: Comment[];
   /** Configured specialist agent names, selectable in the comment composer. */
   agents: string[];
+  /** Active theme's mode — flips the diff viewer's own palette. */
+  themeMode: 'dark' | 'light';
   busy: boolean;
   streamScope?: ChatScope;
   streamText: string;
@@ -199,7 +201,7 @@ export function DiffPane(props: {
             hunks: diff.hunks,
           }}
           diffViewMode={mode}
-          diffViewTheme="dark"
+          diffViewTheme={props.themeMode}
           diffViewHighlight
           // Wrap mode is required for drag-select: the lib only emits the
           // data-side attributes the MultiSelectManager needs when wrapping.

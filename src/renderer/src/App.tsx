@@ -19,6 +19,8 @@ export type ChatScope = { type: 'chat' } | { type: 'finding'; index: number } | 
 export function dismissalKey(d: Pick<DismissedFinding, 'file' | 'category' | 'summary'>): string {
   return `${d.file}::${d.category}::${d.summary}`;
 }
+import { applyTheme } from './theme.js';
+import { resolveTheme } from '../../shared/themes.js';
 import { Sidebar } from './components/Sidebar.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { InstructionsModal } from './components/InstructionsModal.js';
@@ -64,11 +66,27 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [instructionsRepo, setInstructionsRepo] = useState<RepoInfo | null>(null);
   const [agentNames, setAgentNames] = useState<string[]>([]);
+  const [themeMode, setThemeMode] = useState<'dark' | 'light'>('dark');
 
-  // Specialist agent names for the comment composer; refresh after settings close.
+  // Settings-derived state (agent names, theme); refresh after settings close —
+  // reapplying the saved theme also reverts any live preview from the editor.
   useEffect(() => {
     if (settingsOpen) return;
-    window.margin.getSettings().then((s) => setAgentNames(s.agents.filter((a) => a.name.trim() && a.instructions.trim()).map((a) => a.name.trim())));
+    // Cancelled on reopen so a slow read can't clobber the editor's live preview.
+    let cancelled = false;
+    window.margin
+      .getSettings()
+      .then((s) => {
+        if (cancelled) return;
+        setAgentNames(s.agents.filter((a) => a.name.trim() && a.instructions.trim()).map((a) => a.name.trim()));
+        const theme = resolveTheme(s.themes);
+        applyTheme(theme);
+        setThemeMode(theme.mode);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [settingsOpen]);
   const loaded = useRef(false);
   // True until persisted state has arrived — renders the boot mark instead of
@@ -312,6 +330,15 @@ export function App() {
         }));
         return result;
       } catch (err) {
+        // A delta review with nothing new arrives through the error path, but
+        // it's an up-to-date state, not a failure — keep the prior findings.
+        if (String(err).includes('No new changes since the last review')) {
+          patchSession(session.key, (s) => ({
+            status: 'done',
+            transcript: [...s.transcript, 'Already up to date — no new commits since the last review.'],
+          }));
+          return null;
+        }
         patchSession(session.key, { status: 'error', error: String(err) });
         return null;
       }
@@ -795,6 +822,7 @@ export function App() {
                   findings={fileFindings}
                   comments={fileComments}
                   agents={agentNames}
+                  themeMode={themeMode}
                   busy={!!chatBusy[active.key]}
                   streamScope={activeScope}
                   streamText={activeStream}

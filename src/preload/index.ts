@@ -24,6 +24,7 @@ const api: MarginApi = {
   saveRepoInstructions: (repoPath, text) => ipcRenderer.invoke('instructions:save', repoPath, text),
   ensureWorkdir: (target, workDir) => ipcRenderer.invoke('workdir:ensure', target, workDir),
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  openSettingsFile: () => ipcRenderer.invoke('settings:openFile'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   loadState: () => ipcRenderer.invoke('storage:load'),
   saveRepo: (repo) => ipcRenderer.invoke('storage:saveRepo', repo),

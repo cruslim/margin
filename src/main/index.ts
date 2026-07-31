@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -76,19 +76,20 @@ import { verifyFindings } from '../engine/verify.js';
 import type { Finding } from '../engine/types.js';
 import type { AppSettings } from '../shared/ipc.js';
 import { createWorktree, removeWorktree } from '../engine/worktree.js';
+import { resolveTheme } from '../shared/themes.js';
 import * as storage from './storage.js';
 import type { ReviewTarget } from '../engine/types.js';
 import type { DismissedFinding, RepoInfo, Session } from '../shared/ipc.js';
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
 
-function createWindow(): BrowserWindow {
+function createWindow(backgroundColor: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1480,
     height: 940,
     title: 'Margin',
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#16161e',
+    backgroundColor,
     // Appear fully painted: the first frame is the boot mark, never a blank window.
     show: false,
     webPreferences: {
@@ -106,7 +107,9 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Paint the window in the active theme's background from the first frame.
+  const themeBg = resolveTheme((await storage.loadSettings().catch(() => undefined))?.themes).colors.bg;
   ipcMain.handle('repo:pick', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)!;
     const result = await dialog.showOpenDialog(win, {
@@ -123,6 +126,14 @@ app.whenReady().then(() => {
   ipcMain.handle('diff:file', (_e, target: ReviewTarget, path: string) => fileDiff(target, path));
 
   ipcMain.handle('settings:get', () => storage.loadSettings());
+  ipcMain.handle('settings:openFile', async () => {
+    // Materialize the file with current values first — it may not exist yet,
+    // and a fresh copy gives the editor every key (defaults included).
+    await storage.saveSettings(await storage.loadSettings());
+    // openPath reports failure as a returned string, not a rejection.
+    const openError = await shell.openPath(storage.settingsFilePath());
+    if (openError) throw new Error(openError);
+  });
   ipcMain.handle('settings:save', (_e, settings: AppSettings) => storage.saveSettings(settings));
   ipcMain.handle('storage:load', () => storage.loadState());
   ipcMain.handle('storage:saveRepo', (_e, repo: RepoInfo) => storage.saveRepo(repo));
@@ -301,7 +312,7 @@ app.whenReady().then(() => {
   ipcMain.handle('dismissals:add', (_e, repoPath: string, d: DismissedFinding) => storage.addDismissal(repoPath, d));
   ipcMain.handle('dismissals:remove', (_e, repoPath: string, key: string) => storage.removeDismissal(repoPath, key));
 
-  const win = createWindow();
+  const win = createWindow(themeBg);
 
   if (process.env.MARGIN_SMOKE) {
     win.webContents.on('console-message', (_e, _level, message) => {

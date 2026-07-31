@@ -27,8 +27,11 @@ export function BranchSelect(props: {
   const filtered = filterOptions(props.options, query);
   const selected = props.options.find((o) => o.value === props.value);
 
+  // Functional update: a duplicated event in one batch (mousedown and click both
+  // landing on the trigger) would otherwise read the same stale `open` twice and
+  // leave the menu where it started.
   const toggle = () => {
-    setOpen(!open);
+    setOpen((o) => !o);
     setQuery('');
     setActive(0);
   };
@@ -84,7 +87,13 @@ export function BranchSelect(props: {
                 // preventDefault keeps focus in the search input so blur
                 // doesn't close the menu before click registers
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => pick(o.value)}
+                // preventDefault again on the click: if this widget ever ends up
+                // inside a <label>, the label's activation behaviour would fire a
+                // second click on the trigger and reopen what pick just closed.
+                onClick={(e) => {
+                  e.preventDefault();
+                  pick(o.value);
+                }}
                 onMouseEnter={() => setActive(i)}
               >
                 {o.label}

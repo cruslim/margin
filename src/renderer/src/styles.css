@@ -194,7 +194,7 @@ body.resizing * { pointer-events: none; }
   flex-direction: column;
   gap: 8px;
 }
-.new-review-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-dim); }
+.new-review-form .form-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-dim); }
 .new-review-form select {
   background: var(--bg);
   color: var(--text);

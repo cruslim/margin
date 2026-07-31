@@ -27,7 +27,7 @@ import { InstructionsModal } from './components/InstructionsModal.js';
 import { DiffPane } from './components/DiffPane.js';
 import { ReviewPanel } from './components/ReviewPanel.js';
 import { FileList, conversationStates } from './components/FileList.js';
-import { ResizeHandle, usePanelWidth } from './components/Resizer.js';
+import { ResizeHandle, usePanelCollapsed, usePanelWidth } from './components/Resizer.js';
 
 export type { Session };
 
@@ -96,6 +96,7 @@ export function App() {
   const sidebarPanel = usePanelWidth('sidebar', 230, 160, 480, 1);
   const filesPanel = usePanelWidth('filelist', 220, 150, 520, 1);
   const reviewPanel = usePanelWidth('review', 340, 260, 720, -1);
+  const reviewCollapsed = usePanelCollapsed('review');
 
   const active = useMemo(() => sessions.find((s) => s.key === activeKey) ?? null, [sessions, activeKey]);
 
@@ -841,9 +842,12 @@ export function App() {
                 <div className="empty-note">Select a file</div>
               )}
             </section>
-            <ResizeHandle onMouseDown={reviewPanel.startDrag} />
+            {/* Nothing to drag when it's a rail. */}
+            {!reviewCollapsed.collapsed && <ResizeHandle onMouseDown={reviewPanel.startDrag} />}
             <ReviewPanel
               width={reviewPanel.width}
+              collapsed={reviewCollapsed.collapsed}
+              onToggleCollapse={reviewCollapsed.toggle}
               // Anchored findings, so the panel's line numbers match the diff's.
               session={{ ...active, findings: activeFindings }}
               busy={!!chatBusy[active.key]}

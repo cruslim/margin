@@ -7,12 +7,27 @@ import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
 
 const SEV_ORDER: Record<Finding['severity'], number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
+/**
+ * Panel-with-right-column, the usual glyph for a side panel. A bare ‹ / › chevron
+ * at this size reads as a hairline and is easy to miss.
+ */
+const PanelIcon = (
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+    <rect x="1.6" y="2.6" width="12.8" height="10.8" rx="2" />
+    <path d="M10 2.6v10.8" />
+    <path d="M10 2.6h2.4a2 2 0 0 1 2 2v6.8a2 2 0 0 1-2 2H10z" fill="currentColor" stroke="none" opacity="0.4" />
+  </svg>
+);
+
 function fmtTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
 }
 
 export function ReviewPanel(props: {
   width: number;
+  /** Hidden down to a rail, so the diff gets the space. */
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   session: Session;
   busy: boolean;
   streamScope?: ChatScope;
@@ -64,6 +79,19 @@ export function ReviewPanel(props: {
     .sort((a, b) => SEV_ORDER[a.finding.severity] - SEV_ORDER[b.finding.severity]);
   const refuted = s.findings.filter((f) => f.verdict === 'refuted');
 
+  // Collapsed: a rail wide enough to click, still carrying the finding count so
+  // the panel doesn't hide the fact that there's something to read.
+  if (props.collapsed) {
+    return (
+      <button className="review-rail" title="Show findings panel" onClick={props.onToggleCollapse}>
+        {PanelIcon}
+        {/* Names what's hidden — an icon alone doesn't say what comes back. */}
+        <span className="review-rail-label">Findings</span>
+        {s.findings.length > 0 && <span className="badge">{s.findings.length}</span>}
+      </button>
+    );
+  }
+
   return (
     <aside className="review-panel" style={{ width: props.width }}>
       <div className="panel-tabs">
@@ -75,6 +103,9 @@ export function ReviewPanel(props: {
         </button>
         <button className={tab === 'transcript' ? 'active' : ''} onClick={() => setTab('transcript')}>
           Agent log
+        </button>
+        <button className="panel-collapse" title="Hide findings panel" onClick={props.onToggleCollapse}>
+          {PanelIcon}
         </button>
       </div>
 

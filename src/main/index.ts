@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from 'electron';
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -78,8 +78,9 @@ import type { AppSettings } from '../shared/ipc.js';
 import { createWorktree, removeWorktree } from '../engine/worktree.js';
 import { resolveTheme } from '../shared/themes.js';
 import * as storage from './storage.js';
+import { collectReplies, ensureBridge, itemId, submitTurn, withdrawTurn } from './bridge.js';
 import type { ReviewTarget } from '../engine/types.js';
-import type { DismissedFinding, RepoInfo, Session } from '../shared/ipc.js';
+import type { BridgeSession, BridgeTurn, DismissedFinding, RepoInfo, Session } from '../shared/ipc.js';
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
 
@@ -303,6 +304,73 @@ app.whenReady().then(async () => {
     }
   });
 
+  // External agent mode: comments go out as files and replies come back the same
+  // way, so nothing here awaits an answer — an agent may take minutes, and a
+  // blocking handler would freeze the whole session's chat behind it.
+  const watchedBridges = new Map<string, { session: BridgeSession; sender: WebContents }>();
+  let bridgePoll: NodeJS.Timeout | null = null;
+  let polling = false;
+
+  const pollBridges = async () => {
+    // A slow tick must not overlap the next one: two passes over the same outbox
+    // could both read a file before either had moved it aside.
+    if (polling) return;
+    polling = true;
+    try {
+      for (const [key, watch] of watchedBridges) {
+        if (watch.sender.isDestroyed()) {
+          watchedBridges.delete(key);
+          continue;
+        }
+        const replies = await collectReplies(storage.bridgeDir(watch.session)).catch(() => []);
+        for (const reply of replies) {
+          if (!watch.sender.isDestroyed()) watch.sender.send('bridge:reply', key, reply.threadId, reply.text);
+        }
+      }
+    } finally {
+      polling = false;
+      if (watchedBridges.size === 0 && bridgePoll) {
+        clearInterval(bridgePoll);
+        bridgePoll = null;
+      }
+    }
+  };
+
+  ipcMain.handle('bridge:watch', (event, sessions: BridgeSession[]) => {
+    // The renderer sends its whole set each time, so drop what it registered
+    // before rather than accumulating sessions it has since switched back.
+    for (const [key, watch] of watchedBridges) {
+      if (watch.sender === event.sender) watchedBridges.delete(key);
+    }
+    for (const session of sessions) watchedBridges.set(session.key, { session, sender: event.sender });
+    if (watchedBridges.size > 0 && !bridgePoll) {
+      bridgePoll = setInterval(pollBridges, 1500);
+      // First pass straight away: it also delivers replies written while the app was closed.
+      void pollBridges();
+    }
+  });
+
+  ipcMain.handle('bridge:dir', async (_e, session: BridgeSession) => ensureBridge(storage.bridgeDir(session)));
+
+  ipcMain.handle('bridge:submit', (_e, session: BridgeSession, turn: BridgeTurn) =>
+    submitTurn(storage.bridgeDir(session), itemId(turn.threadId, turn.turn), {
+      repoPath: session.repoPath,
+      baseRef: session.baseRef,
+      headRef: session.headRef,
+      file: turn.file,
+      side: turn.side,
+      startLine: turn.startLine,
+      endLine: turn.endLine,
+      quoted: turn.quoted,
+      messages: turn.messages,
+      finding: turn.finding,
+    }),
+  );
+
+  ipcMain.handle('bridge:withdraw', (_e, session: BridgeSession, threadId: string, turn: number) =>
+    withdrawTurn(storage.bridgeDir(session), itemId(threadId, turn)),
+  );
+
   ipcMain.handle('patch:apply', (_e, repoPath: string, patch: string) => applyPatch(repoPath, patch));
 
   ipcMain.handle('instructions:get', (_e, repoPath: string) => storage.getRepoInstructions(repoPath));
@@ -320,9 +388,15 @@ app.whenReady().then(async () => {
     });
   }
 
+  // A bridge round-trip — a comment or a finding handed to an external agent — is
+  // answered by a poll tick, never by chat:send, so it captures on a timer here
+  // rather than off the end of an AI turn, and needs longer to finish.
+  const externalComment = !!process.env.MARGIN_SMOKE_COMMENT && !!process.env.MARGIN_SMOKE_EXTERNAL;
+  const bridgeSmoke = externalComment || !!process.env.MARGIN_SMOKE_FINDING;
+
   // Smoke-test mode: load a preconfigured session, screenshot the window, quit.
   // (When RUN/COMMENT are set, the capture is triggered by that flow finishing instead.)
-  if (process.env.MARGIN_SMOKE && !process.env.MARGIN_SMOKE_RUN && !process.env.MARGIN_SMOKE_COMMENT) {
+  if (process.env.MARGIN_SMOKE && !process.env.MARGIN_SMOKE_RUN && (!process.env.MARGIN_SMOKE_COMMENT || externalComment)) {
     win.webContents.on('did-finish-load', () => {
       if (process.env.MARGIN_SMOKE_COMPOSER) {
         // Open the line-comment composer by clicking a "+" widget, then capture.
@@ -372,6 +446,13 @@ app.whenReady().then(async () => {
             console.log('composer smoke error:', String(err));
           }
         }, 4000);
+        // Same JS hook the other paths expose, run after the composer is open so a
+        // test can drive the controls inside it.
+        if (process.env.MARGIN_SMOKE_JS) {
+          setTimeout(() => {
+            win.webContents.executeJavaScript(process.env.MARGIN_SMOKE_JS!).catch(() => {});
+          }, 6000);
+        }
         captureAndQuit(win, 9000, 'did-finish-load composer');
       } else {
         // Same JS hook the run/comment paths expose, for driving the UI without
@@ -379,9 +460,9 @@ app.whenReady().then(async () => {
         if (process.env.MARGIN_SMOKE_JS) {
           setTimeout(() => {
             win.webContents.executeJavaScript(process.env.MARGIN_SMOKE_JS!).catch(() => {});
-          }, 3000);
+          }, bridgeSmoke ? 5000 : 3000);
         }
-        captureAndQuit(win, 4500, 'did-finish-load plain');
+        captureAndQuit(win, bridgeSmoke ? 12000 : 4500, 'did-finish-load plain');
       }
     });
   }

@@ -35,6 +35,15 @@ function sessionFile(session: Session): string {
   );
 }
 
+/**
+ * Where a session's external-agent exchange lives — beside its JSON, so the
+ * user's repo stays clean and the bridge files never show up in the diff under
+ * review. See main/bridge.ts for what goes inside.
+ */
+export function bridgeDir(session: Pick<Session, 'key' | 'repoPath' | 'headRef'>): string {
+  return join(reviewsRoot(), repoSlug(session.repoPath), branchSlug(session.headRef), `bridge-${session.key}`);
+}
+
 async function readJson<T>(path: string): Promise<T | null> {
   try {
     return JSON.parse(await readFile(path, 'utf8')) as T;
@@ -61,6 +70,9 @@ export async function loadSettings(): Promise<AppSettings> {
     // Defaults only seed pre-agents settings files; an explicit [] means the
     // user deleted them. Copy the defaults so callers never mutate the shared objects.
     agents: stored?.agents ?? DEFAULT_SETTINGS.agents.map((a) => ({ ...a })),
+    // Hand-edited file: anything but a string is not a choice we can honor.
+    defaultAnswerer:
+      typeof stored?.defaultAnswerer === 'string' ? stored.defaultAnswerer : DEFAULT_SETTINGS.defaultAnswerer,
     // settings.json is hand-editable — normalize instead of trusting the shape.
     themes: sanitizeThemeSettings(stored?.themes),
   };
@@ -87,6 +99,9 @@ export async function saveSessions(sessions: Session[]): Promise<void> {
 
 export async function deleteSession(session: Session): Promise<void> {
   await rm(sessionFile(session), { force: true });
+  // Before the emptiness check below — a left-behind bridge folder would keep
+  // the branch folder looking occupied forever.
+  await rm(bridgeDir(session), { recursive: true, force: true });
   // Drop the branch folder if this was its last session.
   const branchDir = join(reviewsRoot(), repoSlug(session.repoPath), branchSlug(session.headRef));
   const left = await readdir(branchDir).catch(() => null);

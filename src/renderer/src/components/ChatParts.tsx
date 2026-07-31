@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { ChatMessage } from '../../../shared/ipc.js';
@@ -22,7 +22,8 @@ export function splitDiffBlocks(text: string): Array<{ type: 'text' | 'diff'; co
   return parts.filter((p) => p.content);
 }
 
-const CopyIcon = (
+/** Shared with the agent-prompt button, so every copy affordance looks the same. */
+export const CopyIcon = (
   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
     <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
     <path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
@@ -89,15 +90,34 @@ export function ChatInput(props: {
   disabled: boolean;
   placeholder: string;
   autoFocus?: boolean;
+  /** Rendered at the left of the action row — carries the composer's line range. */
+  leading?: ReactNode;
+  /**
+   * Draft survival across remounts, for the composers that live inside the diff
+   * viewer's table — it rebuilds that table whenever DiffPane re-renders, which
+   * remounts them and would otherwise discard what you had typed.
+   *
+   * Deliberately an initial value plus a change *notification*, not a controlled
+   * value: holding the draft in DiffPane state would re-render the pane on every
+   * keystroke, rebuilding the table each character and pushing the caret to the
+   * end. The owner mirrors it into a ref instead. Omit both to keep the draft
+   * local (the chat and thread-reply inputs aren't inside the table).
+   */
+  initialValue?: string;
+  onTextChange?: (v: string) => void;
   onSend: (text: string) => void;
   onCancel?: () => void;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(props.initialValue ?? '');
+  const update = (v: string) => {
+    setText(v);
+    props.onTextChange?.(v);
+  };
   const send = () => {
     const t = text.trim();
     if (!t || props.disabled) return;
     props.onSend(t);
-    setText('');
+    update('');
   };
   return (
     <div className="chat-input">
@@ -107,7 +127,7 @@ export function ChatInput(props: {
         rows={3}
         autoFocus={props.autoFocus}
         disabled={props.disabled}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => update(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -117,12 +137,17 @@ export function ChatInput(props: {
         }}
       />
       <div className="chat-input-actions">
-        {props.onCancel && (
-          <button className="icon-btn" onClick={props.onCancel}>Cancel</button>
-        )}
-        <button className="run-btn small" disabled={props.disabled || !text.trim()} onClick={send}>
-          {props.onCancel ? 'Comment' : 'Send'}
-        </button>
+        {props.leading}
+        {/* Grouped so a wrap in a narrow pane drops `leading` to its own line
+            instead of separating Cancel from the submit button. */}
+        <span className="chat-input-buttons">
+          {props.onCancel && (
+            <button className="icon-btn" onClick={props.onCancel}>Cancel</button>
+          )}
+          <button className="run-btn small" disabled={props.disabled || !text.trim()} onClick={send}>
+            {props.onCancel ? 'Comment' : 'Send'}
+          </button>
+        </span>
       </div>
     </div>
   );

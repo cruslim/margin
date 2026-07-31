@@ -67,6 +67,19 @@ export interface Comment {
   resolved?: boolean;
   /** Specialist agent handling this thread (AppSettings.agents name); unset = the main reviewer. */
   agent?: string;
+  /**
+   * Answered by your own agent over the file bridge instead of by Margin — set
+   * when the thread is started that way or handed over later. Margin makes no AI
+   * call for these threads.
+   */
+  external?: boolean;
+  /**
+   * Turn currently sitting in the bridge inbox, awaiting a reply. Explicit
+   * rather than derived from the last message's role: a thread can be handed
+   * over right after Margin answered it, so "last word is the reviewer's" isn't
+   * the same thing as "a request is out".
+   */
+  pendingTurn?: number;
 }
 
 export interface Session {
@@ -94,10 +107,43 @@ export interface Session {
   comments?: Comment[];
   /** Collapsed findings, keyed by file::category::summary. */
   collapsedFindings?: Record<string, boolean>;
+  /**
+   * Findings handed to your own agent and still awaiting a reply, keyed by the
+   * finding's `f-…` id (see shared/findingItem.ts) with the outstanding turn as
+   * the value. The comment equivalent lives on the comment itself; findings have
+   * no such object, so it hangs off the session like collapsedFindings does.
+   */
+  pendingFindings?: Record<string, number>;
   /** Model override for review + chat in this session ('sonnet' | 'opus' | 'haiku'); unset = Claude Code default. */
   modelChoice?: string;
   /** Commit reviewed last time — enables delta re-reviews. */
   lastReviewedSha?: string;
+}
+
+/** Just enough of a session to locate its bridge directory and describe the changeset. */
+export type BridgeSession = Pick<Session, 'key' | 'repoPath' | 'baseRef' | 'headRef'>;
+
+/**
+ * One comment turn to broker, as flat data.
+ *
+ * Deliberately not a `Comment`: IPC arguments are structured-cloned, and a live
+ * object out of renderer state can turn unclonable once it has crossed the
+ * boundary — the failure surfaces as "An object could not be cloned" on the
+ * *second* submit of the same thread. Callers rebuild this from primitives.
+ */
+export interface BridgeTurn {
+  /** Thread this belongs to: a comment's uuid, or a finding's `f-…` id. */
+  threadId: string;
+  /** Which turn of the thread this is — its message count when brokered. */
+  turn: number;
+  file: string;
+  side: 'old' | 'new';
+  startLine: number;
+  endLine: number;
+  quoted?: string;
+  messages: ChatMessage[];
+  /** Set when the thread is a review finding, so the agent gets the diagnosis too. */
+  finding?: { severity: string; category: string; summary: string; failure?: string };
 }
 
 export interface PersistedState {
@@ -126,6 +172,13 @@ export interface AppSettings {
   };
   /** Specialist subagents assignable to comment threads. */
   agents: Array<{ name: string; description: string; instructions: string; model?: string }>;
+  /**
+   * Who new comment threads go to before you change the picker: 'reviewer'
+   * (Margin's own), 'my-agent' (handed over the file bridge), or a specialist's
+   * name. Spelled out rather than encoded, since settings.json is hand-edited.
+   * A name that no longer matches a configured agent falls back to the reviewer.
+   */
+  defaultAnswerer: string;
   /** Active theme name + user-made themes (presets live in shared/themes.ts). */
   themes: ThemeSettings;
 }
@@ -148,6 +201,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
         'You are a performance specialist. Analyze the code you are asked about for algorithmic complexity, redundant work, N+1 patterns, unnecessary allocations, and blocking I/O on hot paths. Ground every claim in the actual code and quantify impact where possible.',
     },
   ],
+  defaultAnswerer: 'reviewer',
   themes: { active: 'Tokyo Night', custom: [] },
 };
 
@@ -184,6 +238,20 @@ export interface MarginApi {
     message: string,
     opts?: { model?: string; repoPath?: string; agent?: string },
   ): Promise<ChatReply>;
+  /** Directory holding a session's external-agent exchange — shown in the UI so it's copy-pasteable. */
+  bridgeDir(session: BridgeSession): Promise<string>;
+  /**
+   * Broker one comment turn to the user's own agent: writes the inbox file and
+   * returns its path. The turn identifies the request within its thread, so a
+   * follow-up brokers a new item rather than overwriting the first one.
+   */
+  bridgeSubmit(session: BridgeSession, turn: BridgeTurn): Promise<string>;
+  /** Stop waiting on a brokered turn — takes it off the agent's work list. */
+  bridgeWithdraw(session: BridgeSession, threadId: string, turn: number): Promise<void>;
+  /** Sessions whose outboxes main should poll for replies (the external-mode ones). */
+  bridgeWatch(sessions: BridgeSession[]): Promise<void>;
+  /** A reply written by an external agent, to be appended to its thread (comment or finding). */
+  onBridgeReply(cb: (sessionKey: string, threadId: string, text: string) => void): () => void;
   /** User's app-stored review instructions for a repo (merged with the repo's committed .margin/margin.md). */
   getRepoInstructions(repoPath: string): Promise<string>;
   saveRepoInstructions(repoPath: string, text: string): Promise<void>;
@@ -207,7 +275,7 @@ export interface MarginApi {
   saveSessions(sessions: Session[]): Promise<void>;
   deleteSession(session: Session): Promise<void>;
   removeRepoData(repoPath: string): Promise<void>;
-  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string; commentFile: string; commentLine: number; model: string } | null;
+  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string; commentFile: string; commentLine: number; model: string; external: boolean; finding: boolean } | null;
 }
 
 export type { DismissedFinding, Finding, ReviewResult, ReviewTarget };

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SETTING_MY_AGENT, SETTING_REVIEWER } from './answerer.js';
 import type { AppSettings } from '../../../shared/ipc.js';
 import { PRESET_THEMES, resolveTheme, THEME_TOKENS, type Theme, type ThemeSettings } from '../../../shared/themes.js';
 import { applyTheme } from '../theme.js';
@@ -123,6 +124,29 @@ export function SettingsModal(props: { onClose: () => void }) {
 
         {tab === 'agents' && (
         <section className="settings-section">
+          <div className="settings-fields">
+            <label>
+              New comment threads go to{' '}
+              <span className="settings-hint">
+                (the composer's starting choice — still changeable per thread; handing a thread to your
+                own agent spends no AI call)
+              </span>
+              <select
+                value={s.defaultAnswerer}
+                onChange={(e) => setSettings({ ...s, defaultAnswerer: e.target.value })}
+              >
+                <option value={SETTING_REVIEWER}>Margin's reviewer</option>
+                {s.agents
+                  .filter((a) => a.name.trim())
+                  .map((a) => (
+                    <option key={a.name} value={a.name.trim()}>
+                      @{a.name.trim()}
+                    </option>
+                  ))}
+                <option value={SETTING_MY_AGENT}>↗ my agent (file bridge)</option>
+              </select>
+            </label>
+          </div>
           <div className="settings-toggle">
             Specialist agents <span className="settings-hint">(assignable per comment thread — the reviewer delegates the thread to them; read-only tools)</span>
           </div>

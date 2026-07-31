@@ -12,6 +12,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 - **Resolvable conversations** — mark a comment thread resolved to collapse it; the file list shows which files have ongoing (blue) vs fully resolved (green) conversations
 - **Specialist agents** — define named subagents (e.g. `@security`, `@performance`) in settings and assign one when starting a comment thread; the reviewer delegates the thread to it (briefed with the session's context, read-only tools, optional model override) and replies stay with the same specialist
 - **Propose fix** — the agent replies with a unified diff; applying it always shows the patch and asks first (`git apply --recount`)
+- **Hand a thread to your own agent** — pick `↗ my agent` under `answered by` in the comment composer (next to the specialists), or hit `↗ hand to my agent` on a thread Margin already answered, and it's brokered as plain files to whatever agent you're running (Claude Code in a terminal, a CI job, a colleague) instead of Margin's read-only reviewer. It makes the change, writes a reply, and the thread picks it up; hit ↻ and the edit is in the diff. Nothing blocks, no AI call is spent, and "copy prompt" beside the picker hands over the path. Settings → Agents picks which of these new threads start on, so you don't re-choose every time ([design](docs/agent-bridge.md))
 - **Multi-model finders** — an OpenAI-compatible endpoint (GPT/Ollama/OpenRouter) and the CodeRabbit CLI can run in parallel with the Claude reviewer; findings are source-tagged with a per-reviewer Agent-log filter
 - **Verifier pass** — an agentic session cross-examines every finding against the code and marks it verified/refuted/uncertain with reasons
 - **Delta re-reviews** — "Review new changes" covers only commits since the last review
@@ -73,6 +74,8 @@ npm run chat -- "Propose a fix for finding 1"
     instructions.md            # custom review instructions for this repo (optional, user-editable)
     <branch-slug>/             # one folder per reviewed branch ("working-tree" for uncommitted)
       session-<key>.json       # findings, summary, model, token usage, cost, transcript
+      bridge-<key>/            # threads handed to your own agent: inbox/ (Margin writes),
+                               # outbox/ (the agent writes), processed/ — created on first handoff
 ```
 
 ## Safety rules
@@ -87,11 +90,12 @@ npm run chat -- "Propose a fix for finding 1"
 
 ## Roadmap
 
-- [ ] Agent bridge, step 1: live `.margin/review.md` export — open findings and unresolved
-      conversations written into the repo so a coding agent (e.g. Claude Code working on the same
-      branch) can pick them up ([design](docs/agent-bridge.md))
-- [ ] Agent bridge, step 2: MCP server — the coding agent reads threads, replies into them, and
-      resolves them from its side ([design](docs/agent-bridge.md))
+- [x] Agent bridge, step 1: hand a comment thread to a coding agent (e.g. Claude Code working on
+      the same branch) as files, with its replies landing back in the thread
+      ([design](docs/agent-bridge.md))
+- [ ] Agent bridge, step 2: MCP server — the coding agent reads findings as well as threads, replies
+      into them, and resolves them from its side ([design](docs/agent-bridge.md))
+- [ ] Open findings over the file bridge, for agents without MCP
 - [ ] Per-finder findings streaming
 - [ ] Multiple saved providers
 

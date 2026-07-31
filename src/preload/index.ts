@@ -22,11 +22,11 @@ const api: MarginApi = {
   applyPatch: (repoPath, patch) => ipcRenderer.invoke('patch:apply', repoPath, patch),
   bridgeDir: (session) => ipcRenderer.invoke('bridge:dir', session),
   bridgeSubmit: (session, turn) => ipcRenderer.invoke('bridge:submit', session, turn),
-  bridgeWithdraw: (session, commentId, turn) => ipcRenderer.invoke('bridge:withdraw', session, commentId, turn),
+  bridgeWithdraw: (session, threadId, turn) => ipcRenderer.invoke('bridge:withdraw', session, threadId, turn),
   bridgeWatch: (sessions) => ipcRenderer.invoke('bridge:watch', sessions),
   onBridgeReply: (cb) => {
-    const listener = (_e: unknown, sessionKey: string, commentId: string, text: string) =>
-      cb(sessionKey, commentId, text);
+    const listener = (_e: unknown, sessionKey: string, threadId: string, text: string) =>
+      cb(sessionKey, threadId, text);
     ipcRenderer.on('bridge:reply', listener);
     return () => ipcRenderer.removeListener('bridge:reply', listener);
   },
@@ -61,6 +61,10 @@ const api: MarginApi = {
           // Start the session in external agent mode: the comment goes to the
           // file bridge, so the flow can be driven without spending an AI call.
           external: !!process.env.MARGIN_SMOKE_EXTERNAL,
+          // Seed one finding into the smoke session. Findings normally only exist
+          // after a real review, which would make the handoff path untestable
+          // without spending a call.
+          finding: !!process.env.MARGIN_SMOKE_FINDING,
         }
       : null,
 };

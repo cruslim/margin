@@ -111,12 +111,22 @@ open a composer and choose `↗ my agent` again.
 - **Free.** Margin fires an AI turn the moment a comment is created, so normally
   every comment costs a call. A handed-off thread spends nothing.
 
+**Findings too.** A review finding has the same *↗ hand to my agent* action beside
+Reply / Propose fix, so the agent can fix what Margin found without you restating
+it. The item is tagged `kind: finding` and carries the severity, category, summary
+and failure scenario, and it explicitly invites disagreement rather than assuming
+the finding is right. Findings are identified by a hash of file + category +
+summary (`f-…`, see `shared/findingItem.ts`) rather than their index: a re-review
+reorders findings, and an index captured while a request was out would deliver the
+reply onto a different one.
+
 **Limitations**
 
-- The agent can't resolve threads or reply to findings — that's step 2.
+- The agent can't resolve threads or dismiss findings from its side — that's step 2.
 - One bridge per session; two sessions on the same branch get their own
   directories and neither sees the other's items.
-- Findings aren't exported yet (below).
+- Nothing is pushed: the agent only ever sees what you hand over, one item at a
+  time. A bulk export of the whole open-findings list is still the follow-up below.
 
 ## Step 2 — Margin as an MCP server
 

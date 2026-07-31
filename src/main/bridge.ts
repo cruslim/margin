@@ -20,9 +20,9 @@ import type { ChatMessage } from '../shared/ipc.js';
 /** An outbox file is only read once it has been still this long — a reply mid-write is half a reply. */
 const SETTLE_MS = 500;
 
-/** Reply to one brokered turn, routed back to its thread by comment id. */
+/** Reply to one brokered turn, routed back to its thread by id. */
 export interface BridgeReply {
-  commentId: string;
+  threadId: string;
   turn: number;
   text: string;
 }
@@ -39,6 +39,8 @@ export interface InboxContext {
   quoted?: string;
   /** The thread so far, oldest first — the new user message is the last one. */
   messages: ChatMessage[];
+  /** Present when the item is a review finding rather than a line comment. */
+  finding?: { severity: string; category: string; summary: string; failure?: string };
 }
 
 /**
@@ -46,17 +48,17 @@ export interface InboxContext {
  * it. Unique per turn (a thread brokers a new request on every reply) and
  * sortable. UUIDs contain single dashes only, so `--` separates unambiguously.
  */
-export function itemId(commentId: string, turn: number): string {
-  return `${commentId}--${turn}`;
+export function itemId(threadId: string, turn: number): string {
+  return `${threadId}--${turn}`;
 }
 
-export function parseItemId(fileName: string): { commentId: string; turn: number } | null {
+export function parseItemId(fileName: string): { threadId: string; turn: number } | null {
   const base = fileName.replace(/\.md$/, '');
   const at = base.lastIndexOf('--');
   if (at <= 0) return null;
   const turn = Number(base.slice(at + 2));
   if (!Number.isInteger(turn) || turn < 0) return null;
-  return { commentId: base.slice(0, at), turn };
+  return { threadId: base.slice(0, at), turn };
 }
 
 function inboxFile(dir: string, item: string): string {
@@ -84,40 +86,57 @@ export function formatInboxItem(item: string, ctx: InboxContext, replyPath: stri
     .map((m) => `**${m.role === 'user' ? 'Reviewer' : 'Earlier reply'}:** ${m.text.trim()}`)
     .join('\n\n');
 
+  const f = ctx.finding;
   return `---
 id: ${quoted(item)}
-comment: ${quoted(parsed?.commentId ?? item)}
+thread: ${quoted(parsed?.threadId ?? item)}
+kind: ${f ? 'finding' : 'comment'}
 repo: ${quoted(ctx.repoPath)}
 review: ${quoted(`${ctx.baseRef}...${ctx.headRef ?? 'working tree'}`)}
 file: ${quoted(ctx.file)}
 side: ${ctx.side}
 lines: ${quoted(range)}
-reply_to: ${quoted(replyPath)}
+${f ? `severity: ${quoted(f.severity)}\ncategory: ${quoted(f.category)}\n` : ''}reply_to: ${quoted(replyPath)}
 ---
 
-# Margin comment on ${ctx.file}:${range}
+# ${f ? `Margin review finding in ${ctx.file}:${range}` : `Margin comment on ${ctx.file}:${range}`}
 
 Reviewing ${ctx.baseRef}...${ctx.headRef ?? 'the working tree'} in ${ctx.repoPath}.
 ${ctx.side === 'old' ? 'These lines are on the old (removed) side of the diff.' : ''}
 ${
-  ctx.quoted
-    ? `## The lines under discussion
+  f
+    ? `## The finding
+
+**${f.severity} · ${f.category}** — ${f.summary.trim()}
+${f.failure ? `\nHow it fails: ${f.failure.trim()}\n` : ''}
+`
+    : ''
+}${
+    ctx.quoted
+      ? `## The lines under discussion
 
 \`\`\`
 ${ctx.quoted}
 \`\`\`
+
 `
-    : ''
-}
-## Thread
+      : ''
+  }${
+    thread
+      ? `## Thread
 
 ${thread}
-
+`
+      : `_The reviewer handed this over without further comment: address the finding itself._
+`
+  }
 ## How to reply
 
-If the comment asks for a change, make it in the repo above — that is the point of this
-exchange; the reviewer sees it in the diff on refresh. Then write your reply as plain
-markdown (a couple of sentences is plenty) to:
+${
+  f
+    ? 'Fix the finding in the repo above if you agree with it — that is the point of this exchange; the reviewer sees the change in the diff on refresh. If you disagree, say so instead of changing code. Either way write your reply as plain markdown (a couple of sentences is plenty) to:'
+    : 'If the comment asks for a change, make it in the repo above — that is the point of this exchange; the reviewer sees it in the diff on refresh. Then write your reply as plain markdown (a couple of sentences is plenty) to:'
+}
 
     ${replyPath}
 
@@ -129,16 +148,18 @@ unanswered; nothing else in this directory is read, so don't edit this file.
 
 const PROTOCOL_README = `# Margin agent bridge
 
-Margin is brokering its comment threads to you. This directory is the whole protocol.
+Margin is brokering its review threads to you — line comments and review findings.
+This directory is the whole protocol.
 
-- \`inbox/<item>.md\` — an unanswered comment from the reviewer. Each file names the repo,
+- \`inbox/<item>.md\` — an unanswered item from the reviewer: a comment, or a finding its
+  own reviewer raised (\`kind:\` in the front matter says which). Each file names the repo,
   the file and lines it is about, the thread so far, and the exact path to reply to.
 - \`outbox/<item>.md\` — your reply. Same basename as the inbox file it answers; plain
   markdown, written in one shot.
 - \`processed/\` — where Margin moves both halves once a reply is delivered
   (\`<item>.request.md\` and \`<item>.reply.md\`). Read-only history.
 
-Loop: read everything in \`inbox/\`, make the changes the comments ask for in the repo, and
+Loop: read everything in \`inbox/\`, make the changes the items ask for in the repo, and
 write one \`outbox/\` file per item. Margin polls every second or so, appends your text to
 the thread, and clears the item out of \`inbox/\`.
 

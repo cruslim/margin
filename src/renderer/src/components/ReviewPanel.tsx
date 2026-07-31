@@ -4,6 +4,8 @@ import type { ChatScope, Session } from '../App.js';
 import { dismissalKey } from '../App.js';
 import { FindingCard } from './FindingCard.js';
 import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
+import { CopyPromptButton } from './CopyPrompt.js';
+import { findingItemId } from '../../../shared/findingItem.js';
 
 const SEV_ORDER: Record<Finding['severity'], number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -41,6 +43,11 @@ export function ReviewPanel(props: {
   onJumpToFinding: (f: Finding) => void;
   onSendChat: (text: string, findingIndex?: number) => void;
   onProposeFix: (findingIndex: number) => void;
+  /** Findings out with your own agent, keyed by finding id → outstanding turn. */
+  pendingFindings: Record<string, number>;
+  onHandOffFinding: (f: Finding, findingIndex: number) => void;
+  onStopWaitingFinding: (f: Finding) => void;
+  resolveBridgeDir: () => Promise<string>;
   onApplyPatch: (patch: string, findingIndex?: number) => void;
 }) {
   const s = props.session;
@@ -137,6 +144,10 @@ export function ReviewPanel(props: {
                     onDismiss={() => props.onDismiss(finding)}
                     onReply={(text) => props.onSendChat(text, index)}
                     onProposeFix={() => props.onProposeFix(index)}
+                    pending={props.pendingFindings[findingItemId(finding)] != null}
+                    onHandOff={() => props.onHandOffFinding(finding, index)}
+                    onStopWaiting={() => props.onStopWaitingFinding(finding)}
+                    resolveBridgeDir={props.resolveBridgeDir}
                     onApplyPatch={(patch) => props.onApplyPatch(patch, index)}
                   />
                 ))
@@ -206,6 +217,11 @@ function FindingThread(props: {
   onDismiss: () => void;
   onReply: (text: string) => void;
   onProposeFix: () => void;
+  /** A request for this finding is sitting in the bridge inbox. */
+  pending: boolean;
+  onHandOff: () => void;
+  onStopWaiting: () => void;
+  resolveBridgeDir: () => Promise<string>;
   onApplyPatch: (patch: string) => void;
 }) {
   const [replyOpen, setReplyOpen] = useState(false);
@@ -238,9 +254,24 @@ function FindingThread(props: {
           <StreamingBubble text={props.streaming} />
         </div>
       )}
+      {props.pending && (
+        <div className="busy-dot waiting-external">
+          waiting on your agent…
+          {/* The prompt lives here too: a finding has no composer to carry it. */}
+          <CopyPromptButton resolveDir={props.resolveBridgeDir} />
+          <button className="icon-btn stop-waiting" title="Stop expecting a reply" onClick={props.onStopWaiting}>
+            Stop waiting
+          </button>
+        </div>
+      )}
       <div className="thread-actions">
         <button onClick={() => setReplyOpen(!replyOpen)}>Reply</button>
         <button onClick={props.onProposeFix} disabled={props.busy}>Propose fix</button>
+        {!props.pending && (
+          <button onClick={props.onHandOff} title="Send this finding to your own agent to fix">
+            ↗ hand to my agent
+          </button>
+        )}
         <button className="dismiss-btn" onClick={props.onDismiss} title="Hide this finding and never report it again">
           Dismiss
         </button>

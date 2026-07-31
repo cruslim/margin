@@ -14,6 +14,7 @@ import type {
 } from '../../shared/ipc.js';
 import { reanchor } from './components/reanchor.js';
 import { answererFromSetting } from './components/answerer.js';
+import { findingItemId, isFindingItem } from '../../shared/findingItem.js';
 
 /** Which thread the in-flight chat turn belongs to, for routing streamed text. */
 export type ChatScope = { type: 'chat' } | { type: 'finding'; index: number } | { type: 'comment'; id: string };
@@ -42,9 +43,16 @@ function bridgeSessionOf(s: Session): BridgeSession {
   return { key: s.key, repoPath: s.repoPath, baseRef: s.baseRef, headRef: s.headRef };
 }
 
-/** Threads with a request sitting in the bridge inbox — what makes a session worth polling. */
-function pendingThreads(s: Session): Comment[] {
-  return (s.comments ?? []).filter((c) => c.pendingTurn != null);
+/**
+ * Does this session have any request sitting in the bridge inbox? Both kinds
+ * count — a handed-off finding needs its reply polled for exactly as a comment
+ * does, and missing it here would leave the reply sitting in `outbox/` forever.
+ */
+function hasPendingBridgeWork(s: Session): boolean {
+  return (
+    (s.comments ?? []).some((c) => c.pendingTurn != null) ||
+    Object.keys(s.pendingFindings ?? {}).length > 0
+  );
 }
 
 export function sessionTitle(s: Session): string {
@@ -575,7 +583,7 @@ export function App() {
         // its arguments, and a comment that has already crossed the boundary once
         // comes back unclonable, so a thread's *second* turn would fail.
         await window.margin.bridgeSubmit(bridgeSessionOf(session), {
-          commentId: comment.id,
+          threadId: comment.id,
           turn,
           file: comment.file,
           side: comment.side,
@@ -599,9 +607,29 @@ export function App() {
   // Replies from your agent, appended like any other message — the debounced
   // session save picks them up with no extra work.
   useEffect(() => {
-    return window.margin.onBridgeReply((sessionKey, commentId, text) => {
-      appendToComment(sessionKey, commentId, { role: 'assistant', text, at: Date.now() });
-      patchComment(sessionKey, commentId, { pendingTurn: undefined });
+    return window.margin.onBridgeReply((sessionKey, threadId, text) => {
+      const msg: ChatMessage = { role: 'assistant', text, at: Date.now() };
+      if (!isFindingItem(threadId)) {
+        appendToComment(sessionKey, threadId, msg);
+        patchComment(sessionKey, threadId, { pendingTurn: undefined });
+        return;
+      }
+      // Findings are keyed by index in `threads`, but the bridge item is named by
+      // the finding's stable id — map back through it, so a re-review that
+      // reordered findings can't land the reply on the wrong one.
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.key !== sessionKey) return s;
+          const index = s.findings.findIndex((f) => findingItemId(f) === threadId);
+          if (index < 0) return s;
+          const { [threadId]: _done, ...restPending } = s.pendingFindings ?? {};
+          return {
+            ...s,
+            threads: { ...(s.threads ?? {}), [index]: [...(s.threads?.[index] ?? []), msg] },
+            pendingFindings: restPending,
+          };
+        }),
+      );
     });
   }, [appendToComment, patchComment]);
 
@@ -609,6 +637,67 @@ export function App() {
   const handOff = useCallback(
     (session: Session, comment: Comment) => brokerTurn(session, comment),
     [brokerTurn],
+  );
+
+  /**
+   * Hand a review finding to your own agent. Same bridge, same one-item-per-turn
+   * rule; the item carries the diagnosis so the agent can act without the
+   * reviewer restating it.
+   */
+  const handOffFinding = useCallback(
+    async (session: Session, finding: Finding, index: number) => {
+      const threadId = findingItemId(finding);
+      const messages = session.threads?.[index] ?? [];
+      const turn = messages.length;
+      patchSession(session.key, (s) => ({
+        pendingFindings: { ...(s.pendingFindings ?? {}), [threadId]: turn },
+      }));
+      try {
+        await window.margin.bridgeSubmit(bridgeSessionOf(session), {
+          threadId,
+          turn,
+          file: finding.file,
+          side: 'new',
+          startLine: finding.line,
+          endLine: finding.line,
+          quoted: finding.snippet,
+          messages: messages.map((m) => ({ role: m.role, text: m.text, at: m.at })),
+          finding: {
+            severity: finding.severity,
+            category: finding.category,
+            summary: finding.summary,
+            failure: finding.failureScenario,
+          },
+        });
+      } catch (err) {
+        patchSession(session.key, (s) => {
+          const { [threadId]: _failed, ...rest } = s.pendingFindings ?? {};
+          return { pendingFindings: rest };
+        });
+        appendChatMessage(
+          session.key,
+          { role: 'assistant', text: `Error: could not hand this to your agent — ${String(err)}`, at: Date.now() },
+          index,
+        );
+      }
+    },
+    [appendChatMessage, patchSession],
+  );
+
+  /** Give up on a finding that was handed over. */
+  const stopWaitingFinding = useCallback(
+    async (session: Session, finding: Finding) => {
+      const threadId = findingItemId(finding);
+      const turn = session.pendingFindings?.[threadId];
+      patchSession(session.key, (s) => {
+        const { [threadId]: _dropped, ...rest } = s.pendingFindings ?? {};
+        return { pendingFindings: rest };
+      });
+      if (turn != null) {
+        await window.margin.bridgeWithdraw(bridgeSessionOf(session), threadId, turn).catch(() => {});
+      }
+    },
+    [patchSession],
   );
 
   /** Give up on an outstanding turn: off the agent's work list, and no longer pending. */
@@ -751,6 +840,23 @@ export function App() {
         changeSummary: '',
         costUsd: null,
         modelChoice: smoke.model || undefined,
+        ...(smoke.finding
+          ? {
+              status: 'done' as const,
+              changeSummary: 'Adds an off-by-one to the cart total.',
+              findings: [
+                {
+                  file: 'cart.js',
+                  line: 3,
+                  severity: 'high' as const,
+                  category: 'correctness' as const,
+                  summary: 'Off-by-one skips the last item.',
+                  failureScenario: 'Checkout with 3 items charges for 2.',
+                  snippet: '  for (let i = 0; i < items.length - 1; i++) {',
+                },
+              ],
+            }
+          : {}),
       };
       setSessions([session]);
       setActiveKey(session.key);
@@ -834,7 +940,7 @@ export function App() {
   // identity: `sessions` gets a new object on every state change, and
   // re-registering restarts the poll.
   const awaitingSessions = useMemo(
-    () => sessions.filter((s) => pendingThreads(s).length > 0).map(bridgeSessionOf),
+    () => sessions.filter(hasPendingBridgeWork).map(bridgeSessionOf),
     [sessions],
   );
   const watchSignature = awaitingSessions.map((s) => `${s.key}|${s.repoPath}|${s.baseRef}|${s.headRef}`).join('\n');
@@ -1002,6 +1108,10 @@ export function App() {
               onJumpToFinding={(f: Finding) => setSelectedFile(f.file)}
               onSendChat={(text, findingIndex) => sendChat(active, text, findingIndex)}
               onProposeFix={(findingIndex) => proposeFix(active, findingIndex)}
+              pendingFindings={active.pendingFindings ?? {}}
+              onHandOffFinding={(f, index) => handOffFinding(active, f, index)}
+              onStopWaitingFinding={(f) => stopWaitingFinding(active, f)}
+              resolveBridgeDir={resolveBridgeDir}
               onApplyPatch={(patch, findingIndex) => applyPatch(active, patch, findingIndex)}
             />
           </div>

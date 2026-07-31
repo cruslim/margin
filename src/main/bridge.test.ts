@@ -38,11 +38,11 @@ const settled = () => Date.now() + 10_000;
 
 describe('parseItemId', () => {
   it('round-trips an item id', () => {
-    expect(parseItemId(`${itemId(COMMENT, 3)}.md`)).toEqual({ commentId: COMMENT, turn: 3 });
+    expect(parseItemId(`${itemId(COMMENT, 3)}.md`)).toEqual({ threadId: COMMENT, turn: 3 });
   });
 
   it('keeps the single dashes of a UUID intact', () => {
-    expect(parseItemId(`${itemId(COMMENT, 0)}.md`)?.commentId).toBe(COMMENT);
+    expect(parseItemId(`${itemId(COMMENT, 0)}.md`)?.threadId).toBe(COMMENT);
   });
 
   it('rejects names that are not items', () => {
@@ -59,7 +59,8 @@ describe('formatInboxItem', () => {
 
   it('front-matters everything needed to locate the code and reply', () => {
     expect(body).toContain(`id: "${item}"`);
-    expect(body).toContain(`comment: "${COMMENT}"`);
+    expect(body).toContain(`thread: "${COMMENT}"`);
+    expect(body).toContain('kind: comment');
     expect(body).toContain('repo: "/Users/dev/work/margin"');
     expect(body).toContain('review: "master...feat/themes"');
     expect(body).toContain('lines: "261-264"');
@@ -100,6 +101,53 @@ describe('formatInboxItem', () => {
   });
 });
 
+describe('formatInboxItem for a finding', () => {
+  const item = itemId('f-1a2b3c4d', 0);
+  const asFinding = formatInboxItem(
+    item,
+    ctx({
+      messages: [],
+      finding: { severity: 'high', category: 'correctness', summary: 'Off-by-one skips the last item.', failure: 'Checkout with 3 items charges for 2.' },
+    }),
+    '/reply/here.md',
+  );
+
+  it('is tagged as a finding, with its severity and category', () => {
+    expect(asFinding).toContain('kind: finding');
+    expect(asFinding).toContain('severity: "high"');
+    expect(asFinding).toContain('category: "correctness"');
+    expect(asFinding).toContain('# Margin review finding in src/main/index.ts');
+  });
+
+  it('states the diagnosis, so the agent can act without it being restated', () => {
+    expect(asFinding).toContain('**high · correctness** — Off-by-one skips the last item.');
+    expect(asFinding).toContain('How it fails: Checkout with 3 items charges for 2.');
+  });
+
+  it('says so when handed over with no conversation', () => {
+    expect(asFinding).toContain('handed this over without further comment');
+    expect(asFinding).not.toContain('## Thread');
+  });
+
+  it('still carries a conversation when there is one', () => {
+    const withThread = formatInboxItem(
+      item,
+      ctx({
+        messages: [{ role: 'user', text: 'is this actually reachable?', at: 1 }],
+        finding: { severity: 'low', category: 'style', summary: 'Naming.' },
+      }),
+      '/r.md',
+    );
+    expect(withThread).toContain('## Thread');
+    expect(withThread).toContain('**Reviewer:** is this actually reachable?');
+    expect(withThread).not.toContain('handed this over without further comment');
+  });
+
+  it('invites disagreement rather than assuming the finding is right', () => {
+    expect(asFinding).toContain('If you disagree, say so instead of changing code');
+  });
+});
+
 describe('submitTurn', () => {
   it('writes the request and the protocol note', async () => {
     const item = itemId(COMMENT, 1);
@@ -117,7 +165,7 @@ describe('collectReplies', () => {
     await writeFile(outboxFile(dir, item), 'Added the guard on line 262.\n');
 
     expect(await collectReplies(dir, settled())).toEqual([
-      { commentId: COMMENT, turn: 1, text: 'Added the guard on line 262.' },
+      { threadId: COMMENT, turn: 1, text: 'Added the guard on line 262.' },
     ]);
     expect(await readdir(join(dir, 'inbox'))).toEqual([]);
     expect(await readdir(join(dir, 'outbox'))).toEqual([]);
@@ -163,11 +211,11 @@ describe('collectReplies', () => {
     expect(replies).toHaveLength(3);
     // Ordering that matters is within a thread — an out-of-order pair would
     // append the answers to the wrong questions.
-    expect(replies.filter((r) => r.commentId === COMMENT)).toEqual([
-      { commentId: COMMENT, turn: 1, text: 'first' },
-      { commentId: COMMENT, turn: 3, text: 'third' },
+    expect(replies.filter((r) => r.threadId === COMMENT)).toEqual([
+      { threadId: COMMENT, turn: 1, text: 'first' },
+      { threadId: COMMENT, turn: 3, text: 'third' },
     ]);
-    expect(replies).toContainEqual({ commentId: other, turn: 1, text: 'other thread' });
+    expect(replies).toContainEqual({ threadId: other, turn: 1, text: 'other thread' });
   });
 
   it('is empty for a bridge that was never used', async () => {

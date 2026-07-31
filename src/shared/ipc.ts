@@ -107,6 +107,13 @@ export interface Session {
   comments?: Comment[];
   /** Collapsed findings, keyed by file::category::summary. */
   collapsedFindings?: Record<string, boolean>;
+  /**
+   * Findings handed to your own agent and still awaiting a reply, keyed by the
+   * finding's `f-…` id (see shared/findingItem.ts) with the outstanding turn as
+   * the value. The comment equivalent lives on the comment itself; findings have
+   * no such object, so it hangs off the session like collapsedFindings does.
+   */
+  pendingFindings?: Record<string, number>;
   /** Model override for review + chat in this session ('sonnet' | 'opus' | 'haiku'); unset = Claude Code default. */
   modelChoice?: string;
   /** Commit reviewed last time — enables delta re-reviews. */
@@ -125,7 +132,8 @@ export type BridgeSession = Pick<Session, 'key' | 'repoPath' | 'baseRef' | 'head
  * *second* submit of the same thread. Callers rebuild this from primitives.
  */
 export interface BridgeTurn {
-  commentId: string;
+  /** Thread this belongs to: a comment's uuid, or a finding's `f-…` id. */
+  threadId: string;
   /** Which turn of the thread this is — its message count when brokered. */
   turn: number;
   file: string;
@@ -134,6 +142,8 @@ export interface BridgeTurn {
   endLine: number;
   quoted?: string;
   messages: ChatMessage[];
+  /** Set when the thread is a review finding, so the agent gets the diagnosis too. */
+  finding?: { severity: string; category: string; summary: string; failure?: string };
 }
 
 export interface PersistedState {
@@ -237,11 +247,11 @@ export interface MarginApi {
    */
   bridgeSubmit(session: BridgeSession, turn: BridgeTurn): Promise<string>;
   /** Stop waiting on a brokered turn — takes it off the agent's work list. */
-  bridgeWithdraw(session: BridgeSession, commentId: string, turn: number): Promise<void>;
+  bridgeWithdraw(session: BridgeSession, threadId: string, turn: number): Promise<void>;
   /** Sessions whose outboxes main should poll for replies (the external-mode ones). */
   bridgeWatch(sessions: BridgeSession[]): Promise<void>;
-  /** A reply written by an external agent, to be appended to its comment thread. */
-  onBridgeReply(cb: (sessionKey: string, commentId: string, text: string) => void): () => void;
+  /** A reply written by an external agent, to be appended to its thread (comment or finding). */
+  onBridgeReply(cb: (sessionKey: string, threadId: string, text: string) => void): () => void;
   /** User's app-stored review instructions for a repo (merged with the repo's committed .margin/margin.md). */
   getRepoInstructions(repoPath: string): Promise<string>;
   saveRepoInstructions(repoPath: string, text: string): Promise<void>;
@@ -265,7 +275,7 @@ export interface MarginApi {
   saveSessions(sessions: Session[]): Promise<void>;
   deleteSession(session: Session): Promise<void>;
   removeRepoData(repoPath: string): Promise<void>;
-  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string; commentFile: string; commentLine: number; model: string; external: boolean } | null;
+  smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string; commentFile: string; commentLine: number; model: string; external: boolean; finding: boolean } | null;
 }
 
 export type { DismissedFinding, Finding, ReviewResult, ReviewTarget };

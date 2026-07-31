@@ -324,7 +324,7 @@ app.whenReady().then(async () => {
         }
         const replies = await collectReplies(storage.bridgeDir(watch.session)).catch(() => []);
         for (const reply of replies) {
-          if (!watch.sender.isDestroyed()) watch.sender.send('bridge:reply', key, reply.commentId, reply.text);
+          if (!watch.sender.isDestroyed()) watch.sender.send('bridge:reply', key, reply.threadId, reply.text);
         }
       }
     } finally {
@@ -353,7 +353,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('bridge:dir', async (_e, session: BridgeSession) => ensureBridge(storage.bridgeDir(session)));
 
   ipcMain.handle('bridge:submit', (_e, session: BridgeSession, turn: BridgeTurn) =>
-    submitTurn(storage.bridgeDir(session), itemId(turn.commentId, turn.turn), {
+    submitTurn(storage.bridgeDir(session), itemId(turn.threadId, turn.turn), {
       repoPath: session.repoPath,
       baseRef: session.baseRef,
       headRef: session.headRef,
@@ -363,11 +363,12 @@ app.whenReady().then(async () => {
       endLine: turn.endLine,
       quoted: turn.quoted,
       messages: turn.messages,
+      finding: turn.finding,
     }),
   );
 
-  ipcMain.handle('bridge:withdraw', (_e, session: BridgeSession, commentId: string, turn: number) =>
-    withdrawTurn(storage.bridgeDir(session), itemId(commentId, turn)),
+  ipcMain.handle('bridge:withdraw', (_e, session: BridgeSession, threadId: string, turn: number) =>
+    withdrawTurn(storage.bridgeDir(session), itemId(threadId, turn)),
   );
 
   ipcMain.handle('patch:apply', (_e, repoPath: string, patch: string) => applyPatch(repoPath, patch));
@@ -387,10 +388,11 @@ app.whenReady().then(async () => {
     });
   }
 
-  // An external-mode comment is brokered to a file and answered by a poll tick —
-  // it never reaches chat:send, so it captures on a timer here rather than off
-  // the end of an AI turn, and needs longer to let the round-trip finish.
+  // A bridge round-trip — a comment or a finding handed to an external agent — is
+  // answered by a poll tick, never by chat:send, so it captures on a timer here
+  // rather than off the end of an AI turn, and needs longer to finish.
   const externalComment = !!process.env.MARGIN_SMOKE_COMMENT && !!process.env.MARGIN_SMOKE_EXTERNAL;
+  const bridgeSmoke = externalComment || !!process.env.MARGIN_SMOKE_FINDING;
 
   // Smoke-test mode: load a preconfigured session, screenshot the window, quit.
   // (When RUN/COMMENT are set, the capture is triggered by that flow finishing instead.)
@@ -458,9 +460,9 @@ app.whenReady().then(async () => {
         if (process.env.MARGIN_SMOKE_JS) {
           setTimeout(() => {
             win.webContents.executeJavaScript(process.env.MARGIN_SMOKE_JS!).catch(() => {});
-          }, externalComment ? 5000 : 3000);
+          }, bridgeSmoke ? 5000 : 3000);
         }
-        captureAndQuit(win, externalComment ? 12000 : 4500, 'did-finish-load plain');
+        captureAndQuit(win, bridgeSmoke ? 12000 : 4500, 'did-finish-load plain');
       }
     });
   }

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 /**
  * Draggable panel width, persisted to localStorage. `dir` is +1 when the
@@ -36,6 +36,23 @@ export function usePanelWidth(key: string, initial: number, min: number, max: nu
   );
 
   return { width, startDrag };
+}
+
+/**
+ * Whether a panel is collapsed, persisted next to its width so the layout comes
+ * back the way you left it. The width is kept while collapsed, so expanding
+ * restores the size you had rather than a default.
+ */
+export function usePanelCollapsed(key: string) {
+  const storageKey = `margin.collapsed.${key}`;
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(storageKey) === '1');
+
+  useEffect(() => {
+    localStorage.setItem(storageKey, collapsed ? '1' : '0');
+  }, [collapsed, storageKey]);
+
+  const toggle = useCallback(() => setCollapsed((c) => !c), []);
+  return { collapsed, toggle };
 }
 
 export function ResizeHandle(props: { onMouseDown: (e: React.MouseEvent) => void }) {

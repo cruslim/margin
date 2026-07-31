@@ -407,6 +407,34 @@ body.resizing * { pointer-events: none; }
   border-bottom: 2px solid transparent;
 }
 .panel-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+/* Collapse control: sized to its glyph so it doesn't take a tab's share of the row. */
+.panel-tabs button.panel-collapse { flex: 0 0 auto; padding: 9px 10px; color: var(--icon); }
+.panel-tabs button.panel-collapse:hover { color: var(--text); }
+.panel-tabs button.panel-collapse svg { display: block; }
+/* What's left when the panel is collapsed — clickable along its whole height, and
+   labelled, so it reads as "findings, hidden" rather than an anonymous strip. */
+.review-rail {
+  flex-shrink: 0;
+  width: 30px;
+  border-left: 1px solid var(--border);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: 11px;
+  color: var(--icon);
+}
+.review-rail:hover { background: var(--bg-raised); color: var(--text); }
+.review-rail svg { display: block; }
+.review-rail-label {
+  writing-mode: vertical-rl;
+  font-size: 10.5px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+}
+/* Vertical so the count fits the rail's width. */
+.review-rail .badge { padding: 3px 4px; writing-mode: vertical-rl; }
 .panel-body { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 
 .change-summary {

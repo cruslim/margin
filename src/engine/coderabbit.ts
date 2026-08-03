@@ -16,6 +16,8 @@ interface CrEvent {
   severity?: string;
   fileName?: string;
   codegenInstructions?: string;
+  message?: string;
+  metadata?: { waitTime?: string };
 }
 
 function parseCrFinding(e: CrEvent): Finding {
@@ -65,8 +67,7 @@ export async function runCodeRabbitReview(
   const args = [
     'review',
     '--agent',
-    '--type',
-    target.headRef ? 'committed' : 'uncommitted',
+    target.headRef ? '--committed' : '--uncommitted',
     '--base',
     target.baseRef,
   ];
@@ -80,6 +81,10 @@ export async function runCodeRabbitReview(
       const findings: Finding[] = [];
       let buffer = '';
       let stderr = '';
+      let completed = false;
+      // The CLI reports failures (rate limit, auth, no base branch…) as an
+      // `error` event and then exits 0, so exit code alone can't be trusted.
+      let lastError = '';
 
       // Inactivity watchdog: any output resets it, so long reviews are fine —
       // only a process that goes completely silent (hung "connecting to review
@@ -106,7 +111,14 @@ export async function runCodeRabbitReview(
             const e = JSON.parse(line) as CrEvent;
             if (e.type === 'status' && e.status) onProgress?.(`[coderabbit] ${e.status.replace(/_/g, ' ')}`);
             if (e.type === 'finding') findings.push(parseCrFinding(e));
-            if (e.type === 'complete') onProgress?.(`[coderabbit] done, ${findings.length} finding(s)`);
+            if (e.type === 'complete') {
+              completed = true;
+              onProgress?.(`[coderabbit] done, ${findings.length} finding(s)`);
+            }
+            if (e.type === 'error' && e.message) {
+              lastError = e.metadata?.waitTime ? `${e.message} (retry in ${e.metadata.waitTime})` : e.message;
+              onProgress?.(`[coderabbit] error: ${lastError}`);
+            }
           } catch {
             // non-JSON noise
           }
@@ -122,7 +134,9 @@ export async function runCodeRabbitReview(
       });
       child.on('close', (code) => {
         clearTimeout(watchdog);
-        if (code === 0) resolve({ findings });
+        if (completed) resolve({ findings });
+        else if (lastError) reject(new Error(`coderabbit: ${lastError}`));
+        else if (code === 0) reject(new Error('coderabbit exited without completing the review'));
         else reject(new Error(`coderabbit exited ${code}: ${stderr.slice(0, 300)}`));
       });
     });

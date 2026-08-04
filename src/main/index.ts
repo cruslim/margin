@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import fixPath from 'fix-path';
-import { shellEnvSync } from 'shell-env';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -28,18 +27,37 @@ const SHELL_ENV_PASSTHROUGH = [
   'https_proxy',
   'no_proxy',
 ];
-// shellEnvSync spawns a login shell synchronously. If the shell hangs (slow
-// rc files, network mounts, etc.) startup blocks — but the alternative (async)
-// would race with the rest of module init. Accept the trade-off; failures throw.
+// shell-env's shellEnvSync has no timeout, so a shell that hangs (slow rc
+// files, network mounts, a prompt waiting on input) would block startup
+// forever. Run the same interactive-login-shell probe ourselves with a hard
+// deadline; async isn't an option since this must land before module init
+// continues.
+function boundedShellEnv(timeoutMs: number): Record<string, string> {
+  const delim = '_SHELL_ENV_DELIMITER_';
+  // -i matters: .zshrc (where these exports typically live) is only read by
+  // interactive shells.
+  const out = execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', `echo "${delim}"; command env; echo "${delim}"`], {
+    encoding: 'utf8',
+    timeout: timeoutMs,
+    env: { ...process.env, DISABLE_AUTO_UPDATE: 'true' },
+  });
+  const env: Record<string, string> = {};
+  for (const line of (out.split(delim)[1] ?? '').split('\n')) {
+    const eq = line.indexOf('=');
+    if (eq > 0) env[line.slice(0, eq)] = line.slice(eq + 1);
+  }
+  return env;
+}
+
 try {
-  const shellEnv = shellEnvSync();
+  const shellEnv = boundedShellEnv(5_000);
   for (const key of SHELL_ENV_PASSTHROUGH) {
     // === undefined, not falsy: an explicitly empty var (NO_PROXY='') is a
     // deliberate setting to preserve, not a gap to fill.
     if (process.env[key] === undefined && shellEnv[key]) process.env[key] = shellEnv[key];
   }
 } catch {
-  // No usable login shell — keep the launchd environment.
+  // Timed out or no usable login shell — keep the launchd environment.
 }
 
 // fix-path needs a resolvable $SHELL; as a deterministic fallback, probe the

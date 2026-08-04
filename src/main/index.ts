@@ -11,6 +11,58 @@ import { homedir } from 'node:os';
 // `node` for the SDK CLI, so restore the user's shell PATH first.
 fixPath();
 
+// PATH isn't enough behind a corporate TLS-inspecting proxy (Netskope,
+// Zscaler…): spawned CLIs also need the shell's trust-store and proxy vars,
+// or their HTTPS/WebSocket connections fail silently and hang on retry.
+const SHELL_ENV_PASSTHROUGH = [
+  'NODE_EXTRA_CA_CERTS',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+  'REQUESTS_CA_BUNDLE',
+  'CURL_CA_BUNDLE',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'no_proxy',
+];
+// shell-env's shellEnvSync has no timeout, so a shell that hangs (slow rc
+// files, network mounts, a prompt waiting on input) would block startup
+// forever. Run the same interactive-login-shell probe ourselves with a hard
+// deadline; async isn't an option since this must land before module init
+// continues.
+function boundedShellEnv(timeoutMs: number): Record<string, string> {
+  const delim = '_SHELL_ENV_DELIMITER_';
+  // -i matters: .zshrc (where these exports typically live) is only read by
+  // interactive shells.
+  const out = execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', `echo "${delim}"; command env; echo "${delim}"`], {
+    encoding: 'utf8',
+    timeout: timeoutMs,
+    // Shells trap SIGTERM (the default); the deadline only holds with a
+    // signal that can't be caught.
+    killSignal: 'SIGKILL',
+    env: { ...process.env, DISABLE_AUTO_UPDATE: 'true' },
+  });
+  const env: Record<string, string> = {};
+  for (const line of (out.split(delim)[1] ?? '').split('\n')) {
+    const eq = line.indexOf('=');
+    if (eq > 0) env[line.slice(0, eq)] = line.slice(eq + 1);
+  }
+  return env;
+}
+
+try {
+  const shellEnv = boundedShellEnv(5_000);
+  for (const key of SHELL_ENV_PASSTHROUGH) {
+    // === undefined, not falsy: an explicitly empty var (NO_PROXY='') is a
+    // deliberate setting to preserve, not a gap to fill.
+    if (process.env[key] === undefined && shellEnv[key]) process.env[key] = shellEnv[key];
+  }
+} catch {
+  // Timed out or no usable login shell — keep the launchd environment.
+}
+
 // fix-path needs a resolvable $SHELL; as a deterministic fallback, probe the
 // usual node install locations (nvm, homebrew, volta, n) and prepend the
 // first hit to PATH.

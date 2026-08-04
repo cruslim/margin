@@ -28,6 +28,9 @@ const SHELL_ENV_PASSTHROUGH = [
   'https_proxy',
   'no_proxy',
 ];
+// shellEnvSync spawns a login shell synchronously. If the shell hangs (slow
+// rc files, network mounts, etc.) startup blocks — but the alternative (async)
+// would race with the rest of module init. Accept the trade-off; failures throw.
 try {
   const shellEnv = shellEnvSync();
   for (const key of SHELL_ENV_PASSTHROUGH) {

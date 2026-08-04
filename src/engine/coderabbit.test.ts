@@ -81,3 +81,37 @@ describe('coderabbit event stream', () => {
     ).rejects.toThrow(/without completing/);
   });
 });
+
+describe('coderabbit liveness ticker', () => {
+  it('reports the current phase periodically during long quiet stretches', async () => {
+    const lines: string[] = [];
+    // Status, then a quiet second (output every 300ms feeds the watchdog,
+    // but non-JSON lines produce no log entries), then completion.
+    await runCodeRabbitReview(target, (l) => lines.push(l), {
+      inactivityMs: 5000,
+      livenessTickMs: 400,
+      spawnOverride: {
+        command: '/bin/sh',
+        args: [
+          '-c',
+          `echo '{"type":"status","phase":"analyzing","status":"reviewing"}'; for i in 1 2 3 4; do echo tick; sleep 0.3; done; echo '{"type":"complete","status":"review_completed"}'`,
+        ],
+      },
+    });
+    const ticks = lines.filter((l) => l.includes('still reviewing'));
+    expect(ticks.length).toBeGreaterThanOrEqual(1);
+    expect(ticks[0]).toMatch(/\[coderabbit\] still reviewing \(1m\)/);
+  });
+
+  it('stops ticking once the process exits', async () => {
+    const lines: string[] = [];
+    await runCodeRabbitReview(target, (l) => lines.push(l), {
+      inactivityMs: 5000,
+      livenessTickMs: 100,
+      spawnOverride: { command: '/bin/sh', args: ['-c', `echo '{"type":"complete","status":"review_completed"}'`] },
+    });
+    const before = lines.filter((l) => l.includes('still')).length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(lines.filter((l) => l.includes('still')).length).toBe(before);
+  });
+});

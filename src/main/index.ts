@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import fixPath from 'fix-path';
+import { shellEnvSync } from 'shell-env';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -10,6 +11,31 @@ import { homedir } from 'node:os';
 // Apps launched from Finder get a minimal PATH; the review engine spawns
 // `node` for the SDK CLI, so restore the user's shell PATH first.
 fixPath();
+
+// PATH isn't enough behind a corporate TLS-inspecting proxy (Netskope,
+// Zscaler…): spawned CLIs also need the shell's trust-store and proxy vars,
+// or their HTTPS/WebSocket connections fail silently and hang on retry.
+const SHELL_ENV_PASSTHROUGH = [
+  'NODE_EXTRA_CA_CERTS',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+  'REQUESTS_CA_BUNDLE',
+  'CURL_CA_BUNDLE',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NO_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'no_proxy',
+];
+try {
+  const shellEnv = shellEnvSync();
+  for (const key of SHELL_ENV_PASSTHROUGH) {
+    if (!process.env[key] && shellEnv[key]) process.env[key] = shellEnv[key];
+  }
+} catch {
+  // No usable login shell — keep the launchd environment.
+}
 
 // fix-path needs a resolvable $SHELL; as a deterministic fallback, probe the
 // usual node install locations (nvm, homebrew, volta, n) and prepend the

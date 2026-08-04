@@ -34,7 +34,9 @@ const SHELL_ENV_PASSTHROUGH = [
 try {
   const shellEnv = shellEnvSync();
   for (const key of SHELL_ENV_PASSTHROUGH) {
-    if (!process.env[key] && shellEnv[key]) process.env[key] = shellEnv[key];
+    // === undefined, not falsy: an explicitly empty var (NO_PROXY='') is a
+    // deliberate setting to preserve, not a gap to fill.
+    if (process.env[key] === undefined && shellEnv[key]) process.env[key] = shellEnv[key];
   }
 } catch {
   // No usable login shell — keep the launchd environment.

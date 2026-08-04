@@ -39,6 +39,9 @@ function boundedShellEnv(timeoutMs: number): Record<string, string> {
   const out = execFileSync(process.env.SHELL || '/bin/zsh', ['-ilc', `echo "${delim}"; command env; echo "${delim}"`], {
     encoding: 'utf8',
     timeout: timeoutMs,
+    // Shells trap SIGTERM (the default); the deadline only holds with a
+    // signal that can't be caught.
+    killSignal: 'SIGKILL',
     env: { ...process.env, DISABLE_AUTO_UPDATE: 'true' },
   });
   const env: Record<string, string> = {};

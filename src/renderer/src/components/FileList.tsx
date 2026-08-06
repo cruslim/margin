@@ -99,6 +99,26 @@ const TreeIcon = (
 /** Marks a file as machine-generated. Also used in the diff toolbar. */
 export const GenBadge = () => <span className="file-gen">auto-generated</span>;
 
+/** Summed line counts for the toolbar; files without counts (binary) contribute nothing. */
+export function diffTotals(files: Pick<ChangedFile, 'additions' | 'deletions'>[]): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const f of files) {
+    additions += f.additions ?? 0;
+    deletions += f.deletions ?? 0;
+  }
+  return { additions, deletions };
+}
+
+/** GitHub-style +N −M line counts; zero sides are dropped, binary files render nothing. */
+const DiffStat = ({ additions, deletions }: Pick<ChangedFile, 'additions' | 'deletions'>) =>
+  !additions && !deletions ? null : (
+    <span className="file-stat">
+      {additions ? <span className="stat-add">+{additions}</span> : null}
+      {deletions ? <span className="stat-del">−{deletions}</span> : null}
+    </span>
+  );
+
 export function FileList(props: {
   files: ChangedFile[];
   selected: string | null;
@@ -112,6 +132,7 @@ export function FileList(props: {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const tree = useMemo(() => buildTree(props.files), [props.files]);
   const ordered = useMemo(() => orderFiles(props.files), [props.files]);
+  const totals = useMemo(() => diffTotals(props.files), [props.files]);
 
   const setView = (m: ViewMode) => {
     setMode(m);
@@ -148,6 +169,7 @@ export function FileList(props: {
           </span>
         )}
         {props.flagged.has(f.path) && <span className="file-flag">●</span>}
+        <DiffStat additions={f.additions} deletions={f.deletions} />
       </button>
     );
   };
@@ -180,6 +202,8 @@ export function FileList(props: {
       <div className="filelist-toolbar">
         <span className="filelist-count">
           {props.files.length} file{props.files.length === 1 ? '' : 's'}
+          {totals.additions > 0 && <span className="stat-add"> +{totals.additions}</span>}
+          {totals.deletions > 0 && <span className="stat-del"> −{totals.deletions}</span>}
         </span>
         <span className="view-toggle">
           <button

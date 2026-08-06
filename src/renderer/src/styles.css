@@ -330,7 +330,7 @@ body.resizing * { pointer-events: none; }
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
 }
-.filelist-count { color: var(--text-dim); font-size: 11px; }
+.filelist-count { color: var(--text-dim); font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .view-toggle { display: flex; gap: 2px; }
 .view-toggle .icon-btn { display: flex; align-items: center; padding: 3px 6px; }
 .view-toggle .icon-btn.active { background: var(--bg-raised); color: var(--text); }
@@ -355,6 +355,17 @@ body.resizing * { pointer-events: none; }
 .status-D { color: var(--err); }
 .status-R { color: var(--accent); }
 .file-flag { color: var(--err); font-size: 10px; }
+/* Per-file +N −M line counts, right-aligned like GitHub's diff stat. */
+.file-stat {
+  flex-shrink: 0;
+  display: inline-flex;
+  gap: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.stat-add { color: var(--ok); }
+.stat-del { color: var(--err); }
+.file-item.generated .file-stat { opacity: 0.55; }
 .file-convo { display: inline-flex; flex-shrink: 0; }
 .file-convo.ongoing { color: var(--accent); }
 .file-convo.resolved { color: var(--ok); }

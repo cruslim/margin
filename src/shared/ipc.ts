@@ -7,6 +7,9 @@ export interface ChangedFile {
   oldPath?: string;
   /** Auto-generated output (lockfile, build artifact, codegen) — see shared/generated.ts. */
   generated?: boolean;
+  /** Lines added/removed (`git diff --numstat`); absent for binary files. */
+  additions?: number;
+  deletions?: number;
 }
 
 /** A commit on the branch under review (not in its base). */

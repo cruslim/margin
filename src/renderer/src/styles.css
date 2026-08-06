@@ -402,7 +402,16 @@ body.resizing * { pointer-events: none; }
 /* Keeps the gen badge beside the path instead of letting space-between spread it. */
 .diff-title { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .diff-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.diff-scroll { flex: 1; overflow: auto; user-select: text; }
+.diff-body { flex: 1; min-height: 0; display: flex; position: relative; }
+.diff-scroll { flex: 1; min-width: 0; overflow: auto; user-select: text; }
+/*
+ * The two sides of a split diff are columns of the diff library's fixed-layout
+ * table, so the divider can't be a flex sibling — there is nothing to sit
+ * between. It's overlaid on the seam instead, at a left offset DiffPane
+ * measures. Sizing only the old column leaves the new one to take the rest.
+ */
+.diff-split-handle { position: absolute; top: 0; bottom: 0; width: 5px; margin: 0 0 0 -2.5px; }
+col.diff-table-old-content-col { width: var(--diff-old-col, auto); }
 
 /* ---------- review panel ---------- */
 .review-panel {

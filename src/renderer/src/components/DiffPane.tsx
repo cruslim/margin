@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { DiffViewWithMultiSelect, DiffModeEnum, SplitSide } from '@git-diff-view/react';
 import type { DiffViewWithMultiSelectRef } from '@git-diff-view/react';
 import type { Comment, FileDiff, Finding, ReviewTarget } from '../../../shared/ipc.js';
@@ -8,6 +8,37 @@ import { GenBadge } from './FileList.js';
 import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
 import { agentValue, answererOf, ANSWER_EXTERNAL } from './answerer.js';
 import { CopyPromptButton } from './CopyPrompt.js';
+import { useSplitFraction } from './Resizer.js';
+
+const MODE_KEY = 'margin.diffMode';
+
+/**
+ * Share of the diff's width left to a side with no content at all — enough to
+ * stay visible and grabbable, rather than the even split the library gives an
+ * empty column by default.
+ */
+const EMPTY_SIDE = 0.1;
+
+/**
+ * The per-file split a wholly added or deleted file starts at, or null when
+ * both sides have content and the saved preference should stand.
+ */
+export function emptySideFraction(diff: Pick<FileDiff, 'oldContent' | 'newContent'> | null): number | null {
+  if (!diff) return null;
+  if (!diff.oldContent) return EMPTY_SIDE;
+  if (!diff.newContent) return 1 - EMPTY_SIDE;
+  return null;
+}
+
+/**
+ * Turns the table's measurements into the pixels the divider needs. Only the
+ * old column is sized; the new one absorbs the remainder, so the two always
+ * add back up to the pane however it was measured.
+ */
+export function splitGeometry(geom: { gutter: number; width: number }, fraction: number) {
+  const contentWidth = Math.max(0, geom.width - geom.gutter * 2);
+  return { contentWidth, oldColumn: fraction * contentWidth, dividerX: geom.gutter + fraction * contentWidth };
+}
 
 interface LineExtend {
   finding?: Finding;
@@ -65,11 +96,72 @@ export function DiffPane(props: {
   onApplyPatch: (patch: string, commentId: string) => void;
 }) {
   const { diff, error } = props;
-  const [mode, setMode] = useState<DiffModeEnum>(DiffModeEnum.SplitGitHub);
+  const [mode, setMode] = useState<DiffModeEnum>(() =>
+    localStorage.getItem(MODE_KEY) === 'unified' ? DiffModeEnum.Unified : DiffModeEnum.SplitGitHub,
+  );
+  useEffect(() => {
+    localStorage.setItem(MODE_KEY, mode === DiffModeEnum.Unified ? 'unified' : 'split');
+  }, [mode]);
   const [pendingRange, setPendingRange] = useState<{ side: 'old' | 'new'; start: number; end: number } | null>(null);
   const msRef = useRef<DiffViewWithMultiSelectRef>(null);
   /** The scroll container the lib renders its table into — watched for rebuilds. */
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const split = useSplitFraction('diff', 0.5, 0.05, 0.95);
+  /**
+   * The table's own measurements, which only the DOM knows: the library sizes
+   * the line-number gutters from the digit count, and the two content columns
+   * divide whatever is left. Both are needed to place the divider on the seam
+   * the eye sees rather than a guess at it.
+   */
+  const [geom, setGeom] = useState({ gutter: 0, width: 0 });
+  const splitMode = mode === DiffModeEnum.SplitGitHub;
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || !splitMode) return;
+    const measure = () => {
+      // Read off the <col> attribute rather than a cell's box: the library sets
+      // both gutters from one value, and it survives rows being recycled.
+      const col = root.querySelector('col.diff-table-old-num-col');
+      const gutter = Number(col?.getAttribute('width')) || 0;
+      // clientWidth, so the vertical scrollbar doesn't shift the seam.
+      const width = root.clientWidth;
+      setGeom((g) => (g.gutter === gutter && g.width === width ? g : { gutter, width }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    // Same reason as the range highlight below — the lib rebuilds its table on
+    // its own schedule, and the gutter width changes with the file.
+    const mo = new MutationObserver(measure);
+    mo.observe(root, { childList: true, subtree: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+    // `diff` is a dep because the scroll container doesn't exist until it lands
+    // — until then this renders "Loading diff…" and there is nothing to measure.
+  }, [splitMode, diff, props.path, props.reloadKey]);
+
+  // A wholly added or deleted file has one blank side; start it as a sliver.
+  // Per-file, so it doesn't overwrite the split chosen for ordinary diffs.
+  const emptySide = emptySideFraction(diff);
+  useEffect(() => {
+    split.setOverride(emptySide);
+  }, [props.path, emptySide, split.setOverride]);
+
+  const { contentWidth, oldColumn, dividerX } = splitGeometry(geom, split.fraction);
+  const resizable = splitMode && contentWidth > 0;
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLDivElement>(null);
+  /** Paints a drag frame without a re-render; see useSplitFraction's startDrag. */
+  const previewSplit = (f: number) => {
+    const next = splitGeometry(geom, f);
+    containerRef.current?.style.setProperty('--diff-old-col', `${next.oldColumn}px`);
+    if (handleRef.current) handleRef.current.style.left = `${next.dividerX}px`;
+  };
 
   /**
    * Composer state lives in refs, and the composers keep their own local copies.
@@ -179,20 +271,56 @@ export function DiffPane(props: {
   if (diff.hunks.length === 0) return <div className="empty-note">No changes in this file</div>;
 
   return (
-    <div className="diff-container">
+    <div
+      className="diff-container"
+      ref={containerRef}
+      style={resizable ? ({ '--diff-old-col': `${oldColumn}px` } as CSSProperties) : undefined}
+    >
       <div className="diff-toolbar">
         <span className="diff-title">
           <span className="diff-path">{diff.path}</span>
           {props.generated && <GenBadge />}
         </span>
-        <button
-          className="icon-btn"
-          onClick={() => setMode(mode === DiffModeEnum.SplitGitHub ? DiffModeEnum.Unified : DiffModeEnum.SplitGitHub)}
-        >
-          {mode === DiffModeEnum.SplitGitHub ? 'unified' : 'split'}
-        </button>
+        {/* Which view you're in, not what the button does — the old single
+            button was labelled with its action and read as the current mode. */}
+        <span className="view-toggle">
+          <button
+            className={`icon-btn ${splitMode ? 'active' : ''}`}
+            title="Split view"
+            onClick={() => setMode(DiffModeEnum.SplitGitHub)}
+          >
+            split
+          </button>
+          <button
+            className={`icon-btn ${splitMode ? '' : 'active'}`}
+            title="Unified view"
+            onClick={() => setMode(DiffModeEnum.Unified)}
+          >
+            unified
+          </button>
+        </span>
       </div>
-      <div className="diff-scroll" ref={scrollRef}>
+      <div className="diff-body">
+        {resizable && (
+          <div
+            className="resize-handle diff-split-handle"
+            ref={handleRef}
+            style={{ left: dividerX }}
+            title="Drag to resize · double-click for an even split"
+            onMouseDown={(e) =>
+              split.startDrag(
+                e,
+                {
+                  left: (scrollRef.current?.getBoundingClientRect().left ?? 0) + geom.gutter,
+                  width: contentWidth,
+                },
+                previewSplit,
+              )
+            }
+            onDoubleClick={split.reset}
+          />
+        )}
+        <div className="diff-scroll" ref={scrollRef}>
         <DiffViewWithMultiSelect<LineExtend>
           ref={msRef}
           onMultiSelectChange={(range) => {
@@ -315,6 +443,7 @@ export function DiffPane(props: {
             ) : null
           }
         />
+        </div>
       </div>
     </div>
   );

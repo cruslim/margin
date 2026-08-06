@@ -24,8 +24,14 @@ export function fractionAt(clientX: number, area: { left: number; width: number 
  * Mouse plumbing shared by the drag handles: follows a horizontal drag, mapping
  * each x to a value, and hands the last value to `onDone` so callers write to
  * storage once at the end rather than on every frame.
+ *
+ * A press that never moves is not a drag: it commits nothing, and the `resizing`
+ * class is held back until the first move. That class disables pointer events
+ * document-wide, so setting it on mousedown put the handle out of reach of the
+ * hit test for the mouseup that followed — the click landed on `<body>`, and a
+ * double-click on a handle never reached the handle at all.
  */
-function trackDrag(
+export function trackDrag(
   e: React.MouseEvent,
   valueAt: (clientX: number) => number,
   onMove: (value: number) => void,
@@ -33,7 +39,12 @@ function trackDrag(
 ) {
   e.preventDefault();
   let last = valueAt(e.clientX);
+  let dragged = false;
   const move = (ev: MouseEvent) => {
+    if (!dragged) {
+      dragged = true;
+      document.body.classList.add('resizing');
+    }
     last = valueAt(ev.clientX);
     onMove(last);
   };
@@ -41,9 +52,8 @@ function trackDrag(
     window.removeEventListener('mousemove', move);
     window.removeEventListener('mouseup', up);
     document.body.classList.remove('resizing');
-    onDone(last);
+    if (dragged) onDone(last);
   };
-  document.body.classList.add('resizing');
   window.addEventListener('mousemove', move);
   window.addEventListener('mouseup', up);
 }

@@ -49,13 +49,74 @@ export async function changedFiles(target: ReviewTarget): Promise<ChangedFile[]>
     }
   }
   // Working-tree reviews: `git diff` never lists untracked files — surface them as added.
+  let untracked = new Set<string>();
   if (!target.headRef) {
-    for (const p of await untrackedPaths(target.repoPath)) files.push({ path: p, status: 'A' });
+    untracked = new Set(await untrackedPaths(target.repoPath));
+    for (const p of untracked) files.push({ path: p, status: 'A' });
     files.sort((a, b) => a.path.localeCompare(b.path));
   }
+  await addLineCounts(target, files, untracked);
   // After the untracked pass, so a brand-new generated file gets flagged too.
   await markGenerated(target, files);
   return files;
+}
+
+/**
+ * Parse `git diff --numstat -z` output into per-path line counts. A rename
+ * record has an empty path field followed by the old and new paths as their
+ * own NUL-terminated fields; binary files report `-` counts and are skipped.
+ * Exported for tests.
+ */
+export function parseNumstat(out: string): Map<string, { additions: number; deletions: number }> {
+  const map = new Map<string, { additions: number; deletions: number }>();
+  const parts = out.split('\0');
+  for (let i = 0; i < parts.length; i++) {
+    const m = parts[i].match(/^(\d+|-)\t(\d+|-)\t(.*)$/s);
+    if (!m) continue;
+    let path = m[3];
+    if (path === '') {
+      path = parts[i + 2]; // rename: next fields are old path, new path
+      i += 2;
+    }
+    if (m[1] !== '-') map.set(path, { additions: Number(m[1]), deletions: Number(m[2]) });
+  }
+  return map;
+}
+
+/**
+ * Line counts for an untracked file, invisible to a plain `git diff`. As in
+ * untrackedFileDiff, `--no-index` exits 1 whenever it emits a record (even a
+ * 0/0 one for an empty file), so the catch is the success path.
+ */
+async function untrackedNumstat(repoPath: string, path: string): Promise<{ additions: number; deletions: number } | undefined> {
+  try {
+    await git(repoPath, ['diff', '--no-index', '--numstat', '--', '/dev/null', path]);
+    return undefined;
+  } catch (err) {
+    const e = err as { code?: number; stdout?: string };
+    if (e.code !== 1 || typeof e.stdout !== 'string') return undefined;
+    const m = e.stdout.match(/^(\d+|-)\t(\d+|-)\t/);
+    return m && m[1] !== '-' ? { additions: Number(m[1]), deletions: Number(m[2]) } : undefined;
+  }
+}
+
+/** Fill in additions/deletions on each file; binary files stay uncounted. */
+async function addLineCounts(target: ReviewTarget, files: ChangedFile[], untracked: Set<string>): Promise<void> {
+  const stats = parseNumstat(await git(target.repoPath, ['diff', '--numstat', '-z', ...diffArgs(target)]));
+  for (const f of files) {
+    const s = stats.get(f.path);
+    if (s) Object.assign(f, s);
+  }
+  // Untracked files need one git call each — same chunking stance as the sniff below.
+  const missing = files.filter((f) => untracked.has(f.path));
+  for (let i = 0; i < missing.length; i += SNIFF_CHUNK) {
+    await Promise.all(
+      missing.slice(i, i + SNIFF_CHUNK).map(async (f) => {
+        const s = await untrackedNumstat(target.repoPath, f.path);
+        if (s) Object.assign(f, s);
+      }),
+    );
+  }
 }
 
 /**

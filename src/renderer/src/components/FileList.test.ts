@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTree, conversationStates, orderFiles } from './FileList.js';
+import { buildTree, conversationStates, diffTotals, orderFiles } from './FileList.js';
 import type { ChangedFile } from '../../../shared/ipc.js';
 
 const f = (path: string): ChangedFile => ({ path, status: 'M' }) as ChangedFile;
@@ -89,5 +89,25 @@ describe('conversationStates', () => {
     expect(map.get('a.ts')).toBe('ongoing');
     expect(map.get('b.ts')).toBe('resolved');
     expect(map.has('c.ts')).toBe(false);
+  });
+});
+
+describe('diffTotals', () => {
+  it('sums additions and deletions across files', () => {
+    expect(
+      diffTotals([
+        { additions: 42, deletions: 0 },
+        { additions: 18, deletions: 9 },
+        { additions: 31, deletions: 0 },
+      ]),
+    ).toEqual({ additions: 91, deletions: 9 });
+  });
+
+  it('treats uncounted (binary) files as zero', () => {
+    expect(diffTotals([{ additions: 5, deletions: 2 }, {}])).toEqual({ additions: 5, deletions: 2 });
+  });
+
+  it('is zero for no files', () => {
+    expect(diffTotals([])).toEqual({ additions: 0, deletions: 0 });
   });
 });

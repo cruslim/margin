@@ -76,10 +76,10 @@ describe('changedPaths (working tree)', () => {
 });
 
 describe('changedFiles (working tree)', () => {
-  it('lists untracked files as added, sorted with the rest', async () => {
+  it('lists untracked files as added, sorted with the rest, with line counts', async () => {
     expect(await changedFiles(target())).toEqual([
-      { path: 'fresh.txt', status: 'A' },
-      { path: 'tracked.txt', status: 'M' },
+      { path: 'fresh.txt', status: 'A', additions: 2, deletions: 0 },
+      { path: 'tracked.txt', status: 'M', additions: 1, deletions: 1 },
     ]);
   });
 });

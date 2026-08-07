@@ -473,6 +473,7 @@ col.diff-table-old-content-col { width: var(--diff-old-col, auto); }
 }
 
 .finding-card {
+  position: relative;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-left-width: 3px;
@@ -483,6 +484,11 @@ col.diff-table-old-content-col { width: var(--diff-old-col, auto); }
   gap: 6px;
   user-select: text;
 }
+.finding-card:hover .copy-btn { visibility: visible; }
+/* The button lives inside the summary row (the card's top-right belongs to the
+   file:line link), aligned with the summary's first line. */
+.finding-summary { position: relative; }
+.finding-summary .copy-btn { top: 0; right: 0; }
 .finding-card.sev-critical { border-left-color: var(--crit); }
 .finding-card.sev-high { border-left-color: var(--err); }
 .finding-card.sev-medium { border-left-color: var(--warn); }

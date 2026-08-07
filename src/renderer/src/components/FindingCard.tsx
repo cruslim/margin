@@ -1,4 +1,17 @@
 import type { Finding } from '../../../shared/ipc.js';
+import { CopyButton } from './ChatParts.js';
+
+/**
+ * The finding's text alone — no severity/location header, so it pastes clean
+ * into a PR comment or an agent prompt. CodeRabbit findings repeat the summary
+ * as the scenario's opening sentence, so a summary the scenario already starts
+ * with is not written twice.
+ */
+function findingClipboardText(f: Finding): string {
+  return f.failureScenario.startsWith(f.summary.trimEnd())
+    ? f.failureScenario
+    : `${f.summary}\n\n${f.failureScenario}`;
+}
 
 export function FindingCard(props: {
   finding: Finding;
@@ -50,7 +63,12 @@ export function FindingCard(props: {
   return (
     <div className={`finding-card sev-${f.severity} ${props.inline ? 'inline' : ''}`}>
       {head}
-      <div className="finding-summary">{f.summary}</div>
+      <div className="finding-summary">
+        {/* Anchored here, not on the card, so it tracks the summary's first line
+            even when the head row above wraps. */}
+        <CopyButton text={findingClipboardText(f)} title="Copy finding" />
+        {f.summary}
+      </div>
       <div className="finding-scenario">{f.failureScenario}</div>
     </div>
   );

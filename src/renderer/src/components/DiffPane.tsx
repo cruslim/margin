@@ -31,6 +31,30 @@ export function emptySideFraction(diff: Pick<FileDiff, 'oldContent' | 'newConten
 }
 
 /**
+ * Threads the file list's conversation icon jumps to, in preference order: the
+ * unresolved ones, or every thread when they are all resolved — the icon is
+ * shown for a settled file too, and should still take you to what it marks.
+ *
+ * Which of them is *first* is left to the DOM: a thread on the old side and one
+ * on the new share the same row grid, so their line numbers don't order them,
+ * and the rendered table already knows.
+ */
+export function revealCandidates(comments: Pick<Comment, 'id' | 'resolved'>[]): Set<string> {
+  const open = comments.filter((c) => !c.resolved);
+  return new Set((open.length ? open : comments).map((c) => c.id));
+}
+
+/**
+ * How long a reveal keeps looking for its thread. The click can switch files,
+ * so the diff may still be being fetched, and the lib builds its table on its
+ * own schedule after that.
+ */
+const REVEAL_TIMEOUT_MS = 3000;
+
+/** How long the revealed thread stays lit. Matches the CSS animation. */
+const REVEAL_FLASH_MS = 1200;
+
+/**
  * Turns the table's measurements into the pixels the divider needs. Only the
  * old column is sized; the new one absorbs the remainder, so the two always
  * add back up to the pane however it was measured.
@@ -57,6 +81,12 @@ export function DiffPane(props: {
   error?: string | null;
   /** Changes on an explicit refresh, to drop a half-made selection. */
   reloadKey?: number;
+  /**
+   * Bumped by the file list's conversation icon to ask for a jump to this file's
+   * first open thread. A counter rather than a thread id: which thread is first
+   * is only known once the table is up, and the same icon may be clicked twice.
+   */
+  revealConvo?: number;
   findings: Finding[];
   comments: Comment[];
   /** Configured specialist agent names, selectable in the comment composer. */
@@ -242,6 +272,46 @@ export function DiffPane(props: {
       lit.forEach((el) => el.classList.remove('margin-range-lit'));
     };
   }, [pendingRange]);
+
+  // Jump to a thread when the file list's conversation icon asks for one. The
+  // thread's row may not be there yet — the click can switch files, so the diff
+  // is still on its way — so this keeps looking until the row appears rather
+  // than firing once into an empty pane and missing.
+  useEffect(() => {
+    if (!props.revealConvo) return;
+    const wanted = revealCandidates(props.comments);
+    if (wanted.size === 0) return;
+    let raf = 0;
+    let flash: ReturnType<typeof setTimeout> | undefined;
+    let lit: Element | null = null;
+    const giveUpAt = performance.now() + REVEAL_TIMEOUT_MS;
+    const attempt = () => {
+      const el = Array.from(scrollRef.current?.querySelectorAll('[data-comment-id]') ?? []).find((e) =>
+        wanted.has(e.getAttribute('data-comment-id') ?? ''),
+      );
+      if (!el) {
+        if (performance.now() < giveUpAt) raf = requestAnimationFrame(attempt);
+        return;
+      }
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      // Which thread it landed on isn't obvious in a file with several, so light
+      // it. Removed and re-read before re-adding, so a second click on a file
+      // already at its thread replays the animation instead of doing nothing.
+      el.classList.remove('margin-comment-lit');
+      void (el as HTMLElement).offsetWidth;
+      el.classList.add('margin-comment-lit');
+      lit = el;
+      flash = setTimeout(() => el.classList.remove('margin-comment-lit'), REVEAL_FLASH_MS);
+    };
+    attempt();
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(flash);
+      lit?.classList.remove('margin-comment-lit');
+    };
+    // Deliberately only the request: re-running as threads change would drag the
+    // pane back to the top thread whenever a reply lands.
+  }, [props.revealConvo]);
 
   // Inline extends: findings anchor to the new side; comments to either side.
   // Both arrive already re-anchored from App.
@@ -687,12 +757,17 @@ function CommentThread(props: {
     </div>
   );
 
+  // The id is on the DOM so a reveal can find the thread; see revealCandidates.
   if (collapsed) {
-    return <div className={`comment-thread collapsed ${resolved ? 'resolved' : ''}`}>{head}</div>;
+    return (
+      <div className={`comment-thread collapsed ${resolved ? 'resolved' : ''}`} data-comment-id={props.comment.id}>
+        {head}
+      </div>
+    );
   }
 
   return (
-    <div className={`comment-thread ${resolved ? 'resolved' : ''}`}>
+    <div className={`comment-thread ${resolved ? 'resolved' : ''}`} data-comment-id={props.comment.id}>
       {head}
       {props.comment.messages.map((m, i) => (
         <ChatBubble key={i} msg={m} onApplyPatch={props.onApplyPatch} />

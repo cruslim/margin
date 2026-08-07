@@ -366,9 +366,11 @@ body.resizing * { pointer-events: none; }
 .stat-add { color: var(--ok); }
 .stat-del { color: var(--err); }
 .file-item.generated .file-stat { opacity: 0.55; }
-.file-convo { display: inline-flex; flex-shrink: 0; }
+/* Clickable within the row: jumps to the file's first open thread. */
+.file-convo { display: inline-flex; flex-shrink: 0; cursor: pointer; }
 .file-convo.ongoing { color: var(--accent); }
 .file-convo.resolved { color: var(--ok); }
+.file-convo:hover { transform: scale(1.15); }
 /* Auto-generated output: muted badge, and the row itself recedes. */
 .file-gen {
   flex-shrink: 0;
@@ -550,6 +552,12 @@ col.diff-table-old-content-col { width: var(--diff-old-col, auto); }
 }
 .comment-thread.collapsed { padding: 7px 10px; }
 .comment-thread.resolved { border-left-color: var(--ok); }
+/* Jumped to from the file list — says which thread the scroll landed on. */
+.comment-thread.margin-comment-lit { animation: comment-lit 1.2s ease-out; }
+@keyframes comment-lit {
+  from { background: color-mix(in srgb, var(--accent) 30%, var(--bg-panel)); }
+  to { background: var(--bg-panel); }
+}
 .comment-delete, .comment-resolve { visibility: hidden; font-size: 10px; padding: 1px 5px; }
 .comment-head:hover .comment-delete, .comment-head:hover .comment-resolve { visibility: visible; }
 .comment-delete:hover { color: var(--err); }

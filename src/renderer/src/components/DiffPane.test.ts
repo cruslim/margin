@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptySideFraction, splitGeometry } from './DiffPane.js';
+import { emptySideFraction, revealCandidates, splitGeometry } from './DiffPane.js';
 
 describe('emptySideFraction', () => {
   it('leaves an ordinary diff to the saved preference', () => {
@@ -45,5 +45,29 @@ describe('splitGeometry', () => {
 
   it('does not go negative when the gutters exceed the pane', () => {
     expect(splitGeometry({ gutter: 50, width: 40 }, 0.5).contentWidth).toBe(0);
+  });
+});
+
+describe('revealCandidates', () => {
+  it('offers the unresolved threads', () => {
+    const got = revealCandidates([
+      { id: 'a', resolved: true },
+      { id: 'b' },
+      { id: 'c' },
+    ]);
+    expect(got).toEqual(new Set(['b', 'c']));
+  });
+
+  it('falls back to every thread once they are all resolved', () => {
+    // The icon is still shown for a settled file, so it still has to go somewhere.
+    const got = revealCandidates([
+      { id: 'a', resolved: true },
+      { id: 'b', resolved: true },
+    ]);
+    expect(got).toEqual(new Set(['a', 'b']));
+  });
+
+  it('offers nothing for a file with no threads', () => {
+    expect(revealCandidates([]).size).toBe(0);
   });
 });

@@ -125,6 +125,8 @@ export function FileList(props: {
   flagged: Set<string>;
   conversations: Map<string, ConvoState>;
   onSelect: (path: string) => void;
+  /** Open the file and scroll its first open thread into view. */
+  onRevealConversation: (path: string) => void;
 }) {
   const [mode, setMode] = useState<ViewMode>(
     () => (localStorage.getItem('margin.filelist.view') === 'list' ? 'list' : 'tree'),
@@ -161,9 +163,20 @@ export function FileList(props: {
         <span className={`file-path ${rtl ? 'rtl' : ''}`}>{label}</span>
         {f.generated && <GenBadge />}
         {convo && (
+          /* A span, not a button: the row it sits in is itself a button, and one
+             can't be nested in the other. The click is taken off the row so the
+             icon jumps to the thread rather than only opening the file. */
           <span
             className={`file-convo ${convo}`}
-            title={convo === 'ongoing' ? 'Ongoing conversation' : 'All conversations resolved'}
+            title={
+              convo === 'ongoing'
+                ? 'Ongoing conversation — go to it'
+                : 'All conversations resolved — go to them'
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onRevealConversation(f.path);
+            }}
           >
             {BubbleIcon}
           </span>

@@ -79,6 +79,8 @@ export function App() {
   /** Commits on the active branch, listed under its row in the sidebar. */
   const [branchCommits, setBranchCommits] = useState<CommitInfo[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  /** Bumped by the file list's conversation icon; DiffPane scrolls to the thread. */
+  const [revealConvo, setRevealConvo] = useState(0);
   const [chatBusy, setChatBusy] = useState<Record<string, boolean>>({});
   const [streamText, setStreamText] = useState<Record<string, string>>({});
   const [chatScope, setChatScope] = useState<Record<string, ChatScope>>({});
@@ -1105,6 +1107,10 @@ export function App() {
                 flagged={flaggedFiles}
                 conversations={conversationFiles}
                 onSelect={setSelectedFile}
+                onRevealConversation={(path) => {
+                  setSelectedFile(path);
+                  setRevealConvo((n) => n + 1);
+                }}
               />
             </nav>
             <ResizeHandle onMouseDown={filesPanel.startDrag} />
@@ -1116,6 +1122,7 @@ export function App() {
                   diff={openDiff}
                   error={openDiffError}
                   reloadKey={diffReloadKey}
+                  revealConvo={revealConvo}
                   generated={files.find((f) => f.path === selectedFile)?.generated}
                   findings={fileFindings}
                   comments={fileComments}

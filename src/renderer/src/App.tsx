@@ -59,6 +59,9 @@ export function sessionTitle(s: Session): string {
   return s.headRef ?? 'uncommitted changes';
 }
 
+/** The branch left open at quit, reopened on the next launch. */
+const ACTIVE_SESSION_KEY = 'margin.activeSession';
+
 /** File to open by default: something hand-written — a lockfile is rarely what you came to read. */
 function firstReadable(files: ChangedFile[]): string | null {
   return (files.find((f) => !f.generated) ?? files[0])?.path ?? null;
@@ -138,6 +141,10 @@ export function App() {
     window.margin.loadState().then((state) => {
       setRepos(state.repos);
       setSessions(state.sessions);
+      // Reopen the branch that was showing at quit. Guarded on the session
+      // still existing — it may have been deleted with its repo since.
+      const last = localStorage.getItem(ACTIVE_SESSION_KEY);
+      if (last && state.sessions.some((s) => s.key === last)) setActiveKey(last);
       loaded.current = true;
       setBooting(false);
       // loadState serves the stored snapshot without touching git — refresh
@@ -151,6 +158,14 @@ export function App() {
       }
     });
   }, []);
+
+  // Remember the open branch for the next launch. Held back until the load
+  // above has run, or the initial null would erase the key before it is read
+  useEffect(() => {
+    if (!loaded.current || window.margin.smokeConfig()) return;
+    if (activeKey) localStorage.setItem(ACTIVE_SESSION_KEY, activeKey);
+    else localStorage.removeItem(ACTIVE_SESSION_KEY);
+  }, [activeKey]);
 
   // Debounced write-through of sessions to their JSON files.
   useEffect(() => {

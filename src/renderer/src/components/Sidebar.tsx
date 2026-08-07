@@ -12,6 +12,19 @@ const GearIcon = (
   </svg>
 );
 
+/**
+ * Panel-with-left-column: ReviewPanel's PanelIcon reflected about x=8, down to
+ * the arc sweep flags, so the two collapse buttons read as a mirrored pair. The
+ * shaded column is the panel the button acts on — this one's is on the left.
+ */
+const PanelLeftIcon = (
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+    <rect x="1.6" y="2.6" width="12.8" height="10.8" rx="2" />
+    <path d="M6 2.6v10.8" />
+    <path d="M6 2.6H3.6a2 2 0 0 0-2 2v6.8a2 2 0 0 0 2 2H6z" fill="currentColor" stroke="none" opacity="0.4" />
+  </svg>
+);
+
 const STATUS_ICON: Record<Session['status'], string> = {
   idle: '○',
   reviewing: '◐',
@@ -36,6 +49,14 @@ export function Sidebar(props: {
   onRefreshRepo: (path: string) => Promise<void>;
   onEditInstructions: (repo: RepoInfo) => void;
   onOpenSettings: () => void;
+  /** Hidden down to a rail, so the diff gets the space. */
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  /**
+   * False with no session open — the sidebar is the only way to reach one, so
+   * there's nothing to offer and the toggle isn't rendered at all.
+   */
+  canCollapse: boolean;
 }) {
   const [formRepo, setFormRepo] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);
@@ -49,11 +70,28 @@ export function Sidebar(props: {
     props.onRefreshSession(key).finally(() => setRefreshing((prev) => (prev === key ? null : prev)));
   };
 
+  // Collapsed: a rail wide enough to click, naming what comes back — the same
+  // shape the findings panel collapses to at the other edge. Below the hooks
+  // above, which have to run on every render either way.
+  if (props.collapsed) {
+    return (
+      <button className="sidebar-rail" title="Show sidebar" onClick={props.onToggleCollapse}>
+        {PanelLeftIcon}
+        <span className="sidebar-rail-label">Margin</span>
+      </button>
+    );
+  }
+
   return (
     <aside className="sidebar" style={{ width: props.width }}>
       <div className="sidebar-header">
         <span className="logo">Margin</span>
         <span className="row-actions">
+          {props.canCollapse && (
+            <button className="icon-btn" title="Toggle left sidebar" onClick={props.onToggleCollapse}>
+              {PanelLeftIcon}
+            </button>
+          )}
           <button className="icon-btn" title="Settings" onClick={props.onOpenSettings}>{GearIcon}</button>
           <button className="icon-btn" title="Add repository" onClick={props.onAddRepo}>+</button>
         </span>

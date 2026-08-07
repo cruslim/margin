@@ -125,8 +125,11 @@ export function App() {
   const filesPanel = usePanelWidth('filelist', 220, 150, 520, 1);
   const reviewPanel = usePanelWidth('review', 340, 260, 720, -1);
   const reviewCollapsed = usePanelCollapsed('review');
+  const sidebarCollapsed = usePanelCollapsed('sidebar');
 
   const active = useMemo(() => sessions.find((s) => s.key === activeKey) ?? null, [sessions, activeKey]);
+
+  const sidebarHidden = sidebarCollapsed.collapsed && active !== null;
 
   // Load persisted JSON state once on startup (skipped in smoke mode, which seeds its own).
   useEffect(() => {
@@ -1027,8 +1030,61 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    // The topbar spans the window and everything else sits under it, so the
+    // sidebar starts below the header the same way the findings panel does.
+    <div className={active ? 'app has-topbar' : 'app'}>
+      {active && (
+        <header className="topbar">
+          <div className="topbar-title">
+            <span className="repo-name">{active.repoName}</span>
+            <span className="session-name">{sessionTitle(active)}</span>
+            <span className="base-ref">vs {active.baseRef}</span>
+          </div>
+          <div className="topbar-actions">
+            <label className="labelled-select">
+              model
+              <select
+                className="model-select"
+                title="Model for reviews, session chat and finding threads — line comments handed to your agent don't use it"
+                value={active.modelChoice ?? ''}
+                onChange={(e) => patchSession(active.key, { modelChoice: e.target.value || undefined })}
+              >
+                <option value="">default</option>
+                <option value="claude-fable-5">fable</option>
+                <option value="opus">opus</option>
+                <option value="sonnet">sonnet</option>
+                <option value="haiku">haiku</option>
+              </select>
+            </label>
+            {deltaAvailable && (
+              <button
+                className="icon-btn"
+                title="Re-review the full diff from scratch"
+                disabled={active.status === 'reviewing'}
+                onClick={() => runReview(active, 'full')}
+              >
+                full re-review
+              </button>
+            )}
+            <button
+              className="run-btn"
+              disabled={active.status === 'reviewing'}
+              onClick={() => runReview(active, deltaAvailable ? 'delta' : 'full')}
+            >
+              {active.status === 'reviewing'
+                ? 'Reviewing…'
+                : deltaAvailable
+                  ? 'Review new changes'
+                  : active.status === 'done'
+                    ? 'Re-review'
+                    : 'Run review'}
+            </button>
+          </div>
+        </header>
+      )}
+      <div className="app-body">
       <Sidebar
+        collapsed={sidebarHidden}
         width={sidebarPanel.width}
         repos={repos}
         sessions={sessions}
@@ -1046,59 +1102,15 @@ export function App() {
           console.log('[margin] settings opened via gear click');
           setSettingsOpen(true);
         }}
+        onToggleCollapse={sidebarCollapsed.toggle}
+        canCollapse={active !== null}
       />
-      <ResizeHandle onMouseDown={sidebarPanel.startDrag} />
+      {/* Nothing to drag when it's a rail. */}
+      {!sidebarHidden && <ResizeHandle onMouseDown={sidebarPanel.startDrag} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {instructionsRepo && <InstructionsModal repo={instructionsRepo} onClose={() => setInstructionsRepo(null)} />}
       {active ? (
         <main className="main">
-          <header className="topbar">
-            <div className="topbar-title">
-              <span className="repo-name">{active.repoName}</span>
-              <span className="session-name">{sessionTitle(active)}</span>
-              <span className="base-ref">vs {active.baseRef}</span>
-            </div>
-            <div className="topbar-actions">
-              <label className="labelled-select">
-                model
-                <select
-                  className="model-select"
-                  title="Model for reviews, session chat and finding threads — line comments handed to your agent don't use it"
-                  value={active.modelChoice ?? ''}
-                  onChange={(e) => patchSession(active.key, { modelChoice: e.target.value || undefined })}
-                >
-                  <option value="">default</option>
-                  <option value="claude-fable-5">fable</option>
-                  <option value="opus">opus</option>
-                  <option value="sonnet">sonnet</option>
-                  <option value="haiku">haiku</option>
-                </select>
-              </label>
-              {deltaAvailable && (
-                <button
-                  className="icon-btn"
-                  title="Re-review the full diff from scratch"
-                  disabled={active.status === 'reviewing'}
-                  onClick={() => runReview(active, 'full')}
-                >
-                  full re-review
-                </button>
-              )}
-              <button
-                className="run-btn"
-                disabled={active.status === 'reviewing'}
-                onClick={() => runReview(active, deltaAvailable ? 'delta' : 'full')}
-              >
-                {active.status === 'reviewing'
-                  ? 'Reviewing…'
-                  : deltaAvailable
-                    ? 'Review new changes'
-                    : active.status === 'done'
-                      ? 'Re-review'
-                      : 'Run review'}
-              </button>
-            </div>
-          </header>
           <div className="workspace">
             <nav className="filelist" style={{ width: filesPanel.width }}>
               <FileList
@@ -1178,6 +1190,7 @@ export function App() {
           </div>
         </main>
       )}
+      </div>
     </div>
   );
 }

@@ -30,13 +30,13 @@ export const CopyIcon = (
   </svg>
 );
 
-/** Hover button that copies an AI reply's raw markdown to the clipboard. */
-function CopyButton(props: { text: string }) {
+/** Hover button that copies its text to the clipboard. Shared with finding cards. */
+export function CopyButton(props: { text: string; title?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       className={`copy-btn ${copied ? 'copied' : ''}`}
-      title="Copy reply"
+      title={props.title ?? 'Copy reply'}
       onClick={() => {
         navigator.clipboard.writeText(props.text).then(() => {
           setCopied(true);

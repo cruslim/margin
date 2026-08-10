@@ -120,6 +120,18 @@ body.resizing * { pointer-events: none; }
 /* Commits on the selected branch, under its row. */
 .commit-list { padding: 2px 0 6px 26px; display: flex; flex-direction: column; }
 .commit-list.empty-note { padding-top: 4px; font-size: 11px; }
+/* Says which ref the list is really against when it isn't the session's base ref. */
+.commit-list-note {
+  padding: 2px 6px 0 26px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Already landed upstream: a state, not a caveat — so it reads as one. */
+.commit-list-note.merged { color: var(--ok); font-style: normal; }
 .commit-row {
   display: flex;
   align-items: baseline;
@@ -279,6 +291,18 @@ body.resizing * { pointer-events: none; }
 .repo-name { color: var(--text-dim); }
 .session-name { font-weight: 600; }
 .base-ref { color: var(--text-dim); font-size: 12px; }
+/* Why the base ref shown isn't the one the session names. */
+.base-ref-note { font-style: italic; opacity: 0.8; }
+/* This branch has already landed upstream — flagged, not merely noted. */
+.merged-pill {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  color: var(--ok);
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  white-space: nowrap;
+}
 
 .run-btn {
   background: var(--accent);

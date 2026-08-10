@@ -25,6 +25,24 @@ export async function createWorktree(repoPath: string, ref: string): Promise<str
   return dir;
 }
 
+/**
+ * Move an existing review worktree onto `ref`'s current commit. It was detached
+ * at whatever the branch pointed at when the review ran, so a rebase or a new
+ * commit since then leaves chat reading files that no longer match the diff.
+ * Re-checking-out is far cheaper than recreating the worktree, and keeps the
+ * SDK session (which is anchored to the directory) resumable.
+ *
+ * Returns whether it actually moved. --force because the worktree is ours: it
+ * holds no user work, so an untracked leftover shouldn't block the checkout.
+ */
+export async function syncWorktree(repoPath: string, worktreeDir: string, ref: string): Promise<boolean> {
+  const want = await resolveSha(repoPath, ref);
+  const have = (await git(worktreeDir, ['rev-parse', 'HEAD'])).trim();
+  if (want === have) return false;
+  await git(worktreeDir, ['checkout', '--detach', '--force', want]);
+  return true;
+}
+
 export async function removeWorktree(repoPath: string, worktreeDir: string): Promise<void> {
   await git(repoPath, ['worktree', 'remove', '--force', worktreeDir]).catch(() => {});
   await rm(worktreeDir, { recursive: true, force: true }).catch(() => {});

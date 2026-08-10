@@ -127,7 +127,7 @@ import { runCodeRabbitReview } from '../engine/coderabbit.js';
 import { verifyFindings } from '../engine/verify.js';
 import type { Finding } from '../engine/types.js';
 import type { AppSettings } from '../shared/ipc.js';
-import { createWorktree, removeWorktree } from '../engine/worktree.js';
+import { createWorktree, removeWorktree, syncWorktree } from '../engine/worktree.js';
 import { resolveTheme } from '../shared/themes.js';
 import * as storage from './storage.js';
 import { collectReplies, ensureBridge, itemId, submitTurn, withdrawTurn } from './bridge.js';
@@ -306,7 +306,16 @@ app.whenReady().then(async () => {
   // a few days, and spawning the SDK CLI in a missing cwd fails with a
   // misleading "spawn node ENOENT". Recreate the worktree when it's gone.
   ipcMain.handle('workdir:ensure', async (_e, target: ReviewTarget, workDir: string | null) => {
-    if (workDir && existsSync(workDir)) return { workDir, recreated: false };
+    if (workDir && existsSync(workDir)) {
+      // The worktree is detached at whatever the branch pointed at when the
+      // review ran. A rebase or a new commit since then would have chat reading
+      // files that no longer match the diff on screen, so move it up first.
+      const moved =
+        target.headRef && workDir !== target.repoPath
+          ? await syncWorktree(target.repoPath, workDir, target.headRef).catch(() => false)
+          : false;
+      return { workDir, recreated: false, resynced: moved };
+    }
     const fresh = target.headRef ? await createWorktree(target.repoPath, target.headRef) : target.repoPath;
     return { workDir: fresh, recreated: workDir !== null && fresh !== workDir };
   });

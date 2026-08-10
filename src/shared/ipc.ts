@@ -289,7 +289,16 @@ export interface MarginApi {
    * temp worktree when missing (macOS reaps temp dirs). `recreated` means the
    * old dir vanished — the SDK session keyed to it can no longer resume.
    */
-  ensureWorkdir(target: ReviewTarget, workDir: string | null): Promise<{ workDir: string; recreated: boolean }>;
+  /**
+   * Validate a session's worktree before chat runs in it. `recreated` means the
+   * old SDK session can no longer resume; `resynced` means the worktree was
+   * moved onto the branch's current commit (it had drifted — a rebase or a new
+   * commit since the review), so its files match the diff again.
+   */
+  ensureWorkdir(
+    target: ReviewTarget,
+    workDir: string | null,
+  ): Promise<{ workDir: string; recreated: boolean; resynced?: boolean }>;
   /**
    * Apply a unified diff to the repo's working copy. Runs `git apply --check` first,
    * retrying with lenient matching; `note` says when a lenient level was needed.

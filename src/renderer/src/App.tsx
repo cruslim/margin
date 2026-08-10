@@ -281,6 +281,29 @@ export function App() {
     [active, activeKey],
   );
 
+  /**
+   * Rebases, amends and new commits happen in a terminal, so regaining focus is
+   * the moment to notice them — nothing else tells the app the repo moved.
+   *
+   * Gated on the refs having actually moved: refetching unconditionally would
+   * blank and re-anchor the open diff on every alt-tab, and a rev-parse costs
+   * nothing next to re-reading a changeset. That leaves ↻ as the way to pick up
+   * work the refs can't reveal — above all a working-tree session, whose
+   * uncommitted edits move no ref at all.
+   */
+  useEffect(() => {
+    if (!active?.headRef || !activeRefs || activeRefs.key !== active.key) return;
+    const { key, refs } = activeRefs;
+    const target = targetOf(active);
+    const onFocus = async () => {
+      const now = await window.margin.refState(target).catch(() => null);
+      if (!now || (now.headSha === refs.headSha && now.baseSha === refs.baseSha)) return;
+      await refreshSession(key);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [active, activeRefs, refreshSession]);
+
   const addRepo = useCallback(async () => {
     const repo = await window.margin.pickRepo();
     if (!repo) return;

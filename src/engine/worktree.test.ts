@@ -7,8 +7,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   branchDiff,
   changedPaths,
+  createWorktree,
+  removeWorktree,
   resolveBase,
   resolveSha,
+  syncWorktree,
   untrackedFileDiff,
   untrackedPaths,
   workingTreeDiff,
@@ -155,6 +158,8 @@ describe('applyPatch retry ladder', () => {
 describe('rebased branch with a stale base ref', () => {
   let remote: string;
   let clone: string;
+  /** Branch tip before the rebase — the sha a previous review would have recorded. */
+  let preRebaseSha: string;
 
   const init = async (dir: string) => {
     await git(dir, ['config', 'user.email', 'test@test']);
@@ -179,6 +184,7 @@ describe('rebased branch with a stale base ref', () => {
     await git(clone, ['checkout', '-q', '-b', 'feature']);
     await commit(clone, 'mine1.txt', 'mine: one');
     await commit(clone, 'mine2.txt', 'mine: two');
+    preRebaseSha = await resolveSha(clone, 'feature');
 
     // Upstream moves; the clone fetches but never updates its local master.
     await commit(remote, 'theirs1.txt', 'theirs: one');
@@ -230,6 +236,18 @@ describe('rebased branch with a stale base ref', () => {
     expect(res.via).toBeUndefined();
     expect(await changedPaths(clone, 'master', 'untouched')).toEqual(['solo.txt']);
     await git(clone, ['checkout', '-q', 'feature']);
+  });
+
+  it('moves a stale worktree onto the branch tip', async () => {
+    const dir = await createWorktree(clone, preRebaseSha);
+    try {
+      expect(await syncWorktree(clone, dir, 'feature')).toBe(true);
+      expect((await git(dir, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(await resolveSha(clone, 'feature'));
+      // Already there: nothing to do, and it says so.
+      expect(await syncWorktree(clone, dir, 'feature')).toBe(false);
+    } finally {
+      await removeWorktree(clone, dir);
+    }
   });
 
   // Last in this block: it moves origin/master, and restores it so the ordering

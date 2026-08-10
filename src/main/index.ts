@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from 'electron';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import fixPath from 'fix-path';
@@ -168,8 +168,13 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory'],
       title: 'Choose a git repository',
+      // Reopen where the last repo came from; undefined on a first pick leaves
+      // the system default. A since-deleted path is macOS's to fall back from.
+      defaultPath: await storage.getLastPickDir(),
     });
     if (result.canceled || !result.filePaths[0]) return null;
+    // Best-effort: a failed write must not cost the user the repo they picked.
+    await storage.setLastPickDir(dirname(result.filePaths[0])).catch(() => {});
     return openRepo(result.filePaths[0]);
   });
 

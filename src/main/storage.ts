@@ -83,6 +83,28 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   await writeFile(settingsFile(), JSON.stringify(settings, null, 2));
 }
 
+/**
+ * Where the repo picker last landed, so the next one opens there instead of
+ * the system default. Its own file rather than a key in settings.json: that
+ * one is the user's to hand-edit, this is ours to write behind them.
+ *
+ *   <userData>/ui-state.json
+ */
+function uiStateFile(): string {
+  return join(app.getPath('userData'), 'ui-state.json');
+}
+
+export async function getLastPickDir(): Promise<string | undefined> {
+  const stored = await readJson<{ lastPickDir?: unknown }>(uiStateFile());
+  return typeof stored?.lastPickDir === 'string' ? stored.lastPickDir : undefined;
+}
+
+/** Replaces the file wholesale — it holds this one value and nothing else. */
+export async function setLastPickDir(dir: string): Promise<void> {
+  await mkdir(app.getPath('userData'), { recursive: true });
+  await writeFile(uiStateFile(), JSON.stringify({ lastPickDir: dir }, null, 2));
+}
+
 export async function saveRepo(repo: RepoInfo): Promise<void> {
   const dir = join(reviewsRoot(), repoSlug(repo.path));
   await mkdir(dir, { recursive: true });

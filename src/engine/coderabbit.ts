@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Finding, ReviewTarget } from './types.js';
-import { createWorktree, removeWorktree } from './worktree.js';
+import { createWorktree, effectiveBaseSha, removeWorktree } from './worktree.js';
 
 /** Map CodeRabbit severities onto ours. */
 const SEVERITY: Record<string, Finding['severity']> = {
@@ -77,7 +77,10 @@ export async function runCodeRabbitReview(
     '--agent',
     target.headRef ? '--committed' : '--uncommitted',
     '--base',
-    target.baseRef,
+    // The resolved base commit, not the base ref: a branch rebased onto a moved
+    // upstream would otherwise have this finder reviewing the upstream's commits
+    // too, and reporting findings the other finders never see.
+    target.headRef ? await effectiveBaseSha(target.repoPath, target.baseRef, target.headRef) : target.baseRef,
   ];
 
   const inactivityMs = runOpts.inactivityMs ?? INACTIVITY_MS;

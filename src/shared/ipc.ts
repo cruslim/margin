@@ -13,6 +13,30 @@ export interface ChangedFile {
 }
 
 /** A commit on the branch under review (not in its base). */
+/**
+ * Where a review target's refs stand right now. The renderer keeps the last one
+ * it saw per session and compares on window focus: same shas means the repo
+ * hasn't moved and the view can be left alone.
+ */
+export interface RefState {
+  /** Commit the reviewed branch points at. */
+  headSha: string;
+  /** Commit it is compared against — the merge-base, possibly advanced (see baseVia). */
+  baseSha: string;
+  /**
+   * Set when the branch now sits on a ref other than the session's base ref — it
+   * was rebased past it — so the comparison uses that ref instead. `behind` is
+   * how many commits the base ref is missing; `landed` says the base ref has been
+   * merged into this ref, rather than being the same branch further on.
+   */
+  baseVia?: { ref: string; behind: number; landed: boolean };
+  /**
+   * Set when the branch is already wholly in this ref — merged and pushed.
+   * Nothing is ahead of it, so the comparison stays on the base ref.
+   */
+  mergedInto?: string;
+}
+
 export interface CommitInfo {
   /** Abbreviated sha. */
   sha: string;
@@ -215,6 +239,8 @@ export interface MarginApi {
   changedFiles(target: ReviewTarget): Promise<ChangedFile[]>;
   /** Commits on the branch under review; empty for working-tree targets. */
   branchCommits(target: ReviewTarget): Promise<CommitInfo[]>;
+  /** Cheap ref snapshot for spotting git activity outside the app; null for working-tree targets. */
+  refState(target: ReviewTarget): Promise<RefState | null>;
   fileDiff(target: ReviewTarget, path: string): Promise<FileDiff>;
   runReview(
     sessionKey: string,
@@ -263,7 +289,16 @@ export interface MarginApi {
    * temp worktree when missing (macOS reaps temp dirs). `recreated` means the
    * old dir vanished — the SDK session keyed to it can no longer resume.
    */
-  ensureWorkdir(target: ReviewTarget, workDir: string | null): Promise<{ workDir: string; recreated: boolean }>;
+  /**
+   * Validate a session's worktree before chat runs in it. `recreated` means the
+   * old SDK session can no longer resume; `resynced` means the worktree was
+   * moved onto the branch's current commit (it had drifted — a rebase or a new
+   * commit since the review), so its files match the diff again.
+   */
+  ensureWorkdir(
+    target: ReviewTarget,
+    workDir: string | null,
+  ): Promise<{ workDir: string; recreated: boolean; resynced?: boolean }>;
   /**
    * Apply a unified diff to the repo's working copy. Runs `git apply --check` first,
    * retrying with lenient matching; `note` says when a lenient level was needed.

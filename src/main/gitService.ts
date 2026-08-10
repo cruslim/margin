@@ -4,9 +4,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { hasGeneratedMarker, isGeneratedPath } from '../shared/generated.js';
-import type { ChangedFile, CommitInfo, FileDiff, RepoInfo } from '../shared/ipc.js';
+import type { ChangedFile, CommitInfo, FileDiff, RefState, RepoInfo } from '../shared/ipc.js';
 import type { ReviewTarget } from '../engine/types.js';
-import { untrackedFileDiff, untrackedPaths } from '../engine/worktree.js';
+import { effectiveBaseSha, resolveBase, untrackedFileDiff, untrackedPaths } from '../engine/worktree.js';
 
 const run = promisify(execFile);
 
@@ -30,12 +30,23 @@ export async function openRepo(path: string): Promise<RepoInfo | null> {
   return { path, name: basename(path), branches, currentBranch };
 }
 
-function diffArgs(target: ReviewTarget): string[] {
-  return target.headRef ? [`${target.baseRef}...${target.headRef}`] : ['HEAD'];
+/**
+ * The commit a branch target is compared against — see resolveBase for why it
+ * isn't simply `baseRef`. Null for a working-tree target, which diffs HEAD.
+ * Resolved once per public entry point and threaded down: it costs a handful of
+ * git calls, so the two diffs behind a file list shouldn't each redo it.
+ */
+async function baseOf(target: ReviewTarget): Promise<string | null> {
+  return target.headRef ? effectiveBaseSha(target.repoPath, target.baseRef, target.headRef) : null;
+}
+
+function diffArgs(target: ReviewTarget, baseSha: string | null): string[] {
+  return baseSha && target.headRef ? [baseSha, target.headRef] : ['HEAD'];
 }
 
 export async function changedFiles(target: ReviewTarget): Promise<ChangedFile[]> {
-  const out = await git(target.repoPath, ['diff', '--name-status', '-z', ...diffArgs(target)]);
+  const baseSha = await baseOf(target);
+  const out = await git(target.repoPath, ['diff', '--name-status', '-z', ...diffArgs(target, baseSha)]);
   const parts = out.split('\0').filter(Boolean);
   const files: ChangedFile[] = [];
   for (let i = 0; i < parts.length; ) {
@@ -55,7 +66,7 @@ export async function changedFiles(target: ReviewTarget): Promise<ChangedFile[]>
     for (const p of untracked) files.push({ path: p, status: 'A' });
     files.sort((a, b) => a.path.localeCompare(b.path));
   }
-  await addLineCounts(target, files, untracked);
+  await addLineCounts(target, baseSha, files, untracked);
   // After the untracked pass, so a brand-new generated file gets flagged too.
   await markGenerated(target, files);
   return files;
@@ -101,8 +112,13 @@ async function untrackedNumstat(repoPath: string, path: string): Promise<{ addit
 }
 
 /** Fill in additions/deletions on each file; binary files stay uncounted. */
-async function addLineCounts(target: ReviewTarget, files: ChangedFile[], untracked: Set<string>): Promise<void> {
-  const stats = parseNumstat(await git(target.repoPath, ['diff', '--numstat', '-z', ...diffArgs(target)]));
+async function addLineCounts(
+  target: ReviewTarget,
+  baseSha: string | null,
+  files: ChangedFile[],
+  untracked: Set<string>,
+): Promise<void> {
+  const stats = parseNumstat(await git(target.repoPath, ['diff', '--numstat', '-z', ...diffArgs(target, baseSha)]));
   for (const f of files) {
     const s = stats.get(f.path);
     if (s) Object.assign(f, s);
@@ -141,22 +157,49 @@ export function parseCommitLog(out: string): CommitInfo[] {
 }
 
 /**
- * Commits on the branch that aren't in its base (two-dot: the branch's own
- * work). Working-tree targets have none by definition — the changes under
- * review are uncommitted.
+ * Commits on the branch that aren't in its base — the branch's own work.
+ * Working-tree targets have none by definition: the changes under review are
+ * uncommitted.
+ *
+ * Logged from the effective base rather than `baseRef` so a branch rebased onto
+ * a moved upstream doesn't list the upstream's commits as its own, and so the
+ * list agrees with the diff beside it. --topo-order keeps the chain in graph
+ * order: a rebase rewrites committer dates but preserves author dates, which is
+ * what each row shows, so date order and history order can disagree.
  */
 export async function branchCommits(target: ReviewTarget): Promise<CommitInfo[]> {
   if (!target.headRef) return [];
   try {
+    const baseSha = await effectiveBaseSha(target.repoPath, target.baseRef, target.headRef);
     const out = await git(target.repoPath, [
       'log',
-      `${target.baseRef}..${target.headRef}`,
+      `${baseSha}..${target.headRef}`,
+      '--topo-order',
       `--max-count=${MAX_COMMITS}`,
       `--format=${COMMIT_FORMAT}`,
     ]);
     return parseCommitLog(out);
   } catch {
     return []; // unknown ref (branch deleted or renamed) — not worth failing the view
+  }
+}
+
+/**
+ * Where a branch target's refs currently stand. The renderer compares this on
+ * window focus to notice commits, amends and rebases made outside the app —
+ * cheap enough to run on every focus, unlike re-reading the changeset.
+ *
+ * Null for a working-tree target: uncommitted edits move no ref, so there is
+ * nothing here that would reveal them.
+ */
+export async function refState(target: ReviewTarget): Promise<RefState | null> {
+  if (!target.headRef) return null;
+  try {
+    const headSha = (await git(target.repoPath, ['rev-parse', target.headRef])).trim();
+    const base = await resolveBase(target.repoPath, target.baseRef, target.headRef);
+    return { headSha, baseSha: base.sha, baseVia: base.via, mergedInto: base.mergedInto };
+  } catch {
+    return null; // unknown ref (branch deleted or renamed) — same stance as branchCommits
   }
 }
 
@@ -248,14 +291,14 @@ export async function applyPatch(
 }
 
 export async function fileDiff(target: ReviewTarget, path: string): Promise<FileDiff> {
-  const { repoPath, baseRef, headRef } = target;
-  let hunkText = await git(repoPath, ['diff', ...diffArgs(target), '--', path]);
+  const { repoPath, headRef } = target;
+  const baseSha = await baseOf(target);
+  let hunkText = await git(repoPath, ['diff', ...diffArgs(target, baseSha), '--', path]);
 
   let oldContent: string;
   let newContent: string;
-  if (headRef) {
-    const mergeBase = (await git(repoPath, ['merge-base', baseRef, headRef])).trim();
-    oldContent = await showFile(repoPath, mergeBase, path);
+  if (headRef && baseSha) {
+    oldContent = await showFile(repoPath, baseSha, path);
     newContent = await showFile(repoPath, headRef, path);
   } else {
     oldContent = await showFile(repoPath, 'HEAD', path);

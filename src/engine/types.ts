@@ -70,6 +70,13 @@ export interface ReviewResult {
   model: string;
   /** Commit the reviewed ref pointed at, for delta re-reviews. Null for working-tree reviews. */
   headSha: string | null;
+  /**
+   * Whether this really was a delta review. False when a delta was asked for but
+   * the branch had been rebased, taking the previously reviewed commit off it —
+   * the whole changeset was reviewed instead, so these findings replace the old
+   * set rather than adding to it.
+   */
+  incremental: boolean;
   usage: TokenUsage | null;
   costUsd: number | null;
   durationMs: number;

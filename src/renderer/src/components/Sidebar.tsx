@@ -1,8 +1,9 @@
 import { Fragment, useState } from 'react';
 import { BranchSelect } from './BranchSelect.js';
-import type { CommitInfo, RepoInfo } from '../../../shared/ipc.js';
+import type { CommitInfo, RefState, RepoInfo } from '../../../shared/ipc.js';
 import type { Session } from '../App.js';
 import { sessionTitle } from '../App.js';
+import { baseLabel } from './baseLabel.js';
 
 // The ⚙ text glyph renders undersized next to ＋/↻ — a real SVG keeps the set consistent.
 const GearIcon = (
@@ -32,6 +33,8 @@ export function Sidebar(props: {
   onRefreshSession: (key: string) => Promise<void>;
   /** Commits on the selected branch, listed under its row. */
   activeCommits: CommitInfo[];
+  /** Where the selected session's refs stand, for naming the base it's really against. */
+  activeRefs?: RefState;
   onRemoveRepo: (path: string) => void;
   onRefreshRepo: (path: string) => Promise<void>;
   onEditInstructions: (repo: RepoInfo) => void;
@@ -147,7 +150,7 @@ export function Sidebar(props: {
                   </button>
                 </div>
                 {s.key === props.activeKey && s.headRef && (
-                  <CommitList commits={props.activeCommits} baseRef={s.baseRef} />
+                  <CommitList commits={props.activeCommits} baseRef={s.baseRef} refs={props.activeRefs} />
                 )}
                 </Fragment>
               ))}
@@ -165,36 +168,53 @@ export function Sidebar(props: {
  * Commits on the selected branch. Read-only orientation — the sidebar is narrow,
  * so each row is sha + subject and the full detail goes in the tooltip.
  */
-function CommitList(props: { commits: CommitInfo[]; baseRef: string }) {
+function CommitList(props: { commits: CommitInfo[]; baseRef: string; refs?: RefState }) {
   // Own hover card rather than `title`: the native tooltip waits a second or
   // more, and it's the truncated subject people need to read straight away.
   const [hover, setHover] = useState<{ commit: CommitInfo; top: number; left: number } | null>(null);
 
+  // Which ref the list is really against, when it isn't the one the session
+  // names — the branch was rebased past its base, or has already landed.
+  const label = baseLabel(props.baseRef, props.refs);
+  const note = label.note && (
+    <div className={`commit-list-note ${label.merged ? 'merged' : ''}`} title={label.detail}>
+      {label.merged ? `✓ merged into ${label.merged}` : `vs ${label.ref} (${label.note})`}
+    </div>
+  );
+
   if (props.commits.length === 0) {
-    return <div className="commit-list empty-note">No commits ahead of {props.baseRef}</div>;
+    return (
+      <Fragment>
+        {note}
+        <div className="commit-list empty-note">No commits ahead of {label.ref}</div>
+      </Fragment>
+    );
   }
   return (
-    <div className="commit-list">
-      {props.commits.map((c) => (
-        <div
-          key={c.sha}
-          className="commit-row"
-          onMouseEnter={(e) => setHover({ commit: c, ...tooltipPosition(e.clientX, e.clientY) })}
-          onMouseLeave={() => setHover((h) => (h?.commit.sha === c.sha ? null : h))}
-        >
-          <span className="commit-sha">{c.sha}</span>
-          <span className="commit-subject">{c.subject}</span>
-        </div>
-      ))}
-      {hover && (
-        <div className="commit-tooltip" style={{ top: hover.top, left: hover.left }}>
-          <div className="commit-tooltip-subject">{hover.commit.subject}</div>
-          <div className="commit-tooltip-meta">
-            {hover.commit.sha} · {hover.commit.author} · {new Date(hover.commit.date).toLocaleString()}
+    <Fragment>
+      {note}
+      <div className="commit-list">
+        {props.commits.map((c) => (
+          <div
+            key={c.sha}
+            className="commit-row"
+            onMouseEnter={(e) => setHover({ commit: c, ...tooltipPosition(e.clientX, e.clientY) })}
+            onMouseLeave={() => setHover((h) => (h?.commit.sha === c.sha ? null : h))}
+          >
+            <span className="commit-sha">{c.sha}</span>
+            <span className="commit-subject">{c.subject}</span>
           </div>
-        </div>
-      )}
-    </div>
+        ))}
+        {hover && (
+          <div className="commit-tooltip" style={{ top: hover.top, left: hover.left }}>
+            <div className="commit-tooltip-subject">{hover.commit.subject}</div>
+            <div className="commit-tooltip-meta">
+              {hover.commit.sha} · {hover.commit.author} · {new Date(hover.commit.date).toLocaleString()}
+            </div>
+          </div>
+        )}
+      </div>
+    </Fragment>
   );
 }
 

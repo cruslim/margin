@@ -4,7 +4,7 @@ import { generatedFilesNote } from '../shared/generated.js';
 import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
 import type { Finding, ReviewOptions, ReviewTarget } from './types.js';
 import { parseReviewOutput } from './review.js';
-import { branchDiff, createWorktree, removeWorktree, workingTreeDiff, changedPaths } from './worktree.js';
+import { branchDiff, createWorktree, removeWorktree, workingTreeDiff, changedPaths, usableSinceSha } from './worktree.js';
 
 export interface BasicProvider {
   baseUrl: string;
@@ -90,8 +90,13 @@ export async function runBasicReview(
   let diff: string;
   let workDir: string;
   let ownWorktree = false;
+  // Same rebase guard as the agentic review — silently here, since that one
+  // already puts the explanation in the transcript.
+  const sinceSha = target.headRef
+    ? await usableSinceSha(target.repoPath, opts.sinceSha, target.headRef)
+    : undefined;
   if (target.headRef) {
-    diff = await branchDiff(target.repoPath, opts.sinceSha ?? target.baseRef, target.headRef);
+    diff = await branchDiff(target.repoPath, sinceSha ?? target.baseRef, target.headRef);
     workDir = await createWorktree(target.repoPath, target.headRef);
     ownWorktree = true;
   } else {
@@ -102,7 +107,7 @@ export async function runBasicReview(
   try {
     if (!diff.trim()) return { findings: [], model: tag };
 
-    const paths = (await changedPaths(target.repoPath, opts.sinceSha ?? target.baseRef, target.headRef)).slice(0, MAX_FILES);
+    const paths = (await changedPaths(target.repoPath, sinceSha ?? target.baseRef, target.headRef)).slice(0, MAX_FILES);
     let total = 0;
     const fileSections: string[] = [];
     for (const p of paths) {

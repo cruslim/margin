@@ -14,6 +14,7 @@ import {
   syncWorktree,
   untrackedFileDiff,
   untrackedPaths,
+  usableSinceSha,
   workingTreeDiff,
 } from './worktree.js';
 import { applyPatch, branchCommits, changedFiles, fileDiff } from '../main/gitService.js';
@@ -236,6 +237,13 @@ describe('rebased branch with a stale base ref', () => {
     expect(res.via).toBeUndefined();
     expect(await changedPaths(clone, 'master', 'untouched')).toEqual(['solo.txt']);
     await git(clone, ['checkout', '-q', 'feature']);
+  });
+
+  it('drops a sinceSha the rebase orphaned, and keeps one still on the branch', async () => {
+    expect(await usableSinceSha(clone, preRebaseSha, 'feature')).toBeUndefined();
+    const onBranch = await resolveSha(clone, 'feature~1');
+    expect(await usableSinceSha(clone, onBranch, 'feature')).toBe(onBranch);
+    expect(await usableSinceSha(clone, undefined, 'feature')).toBeUndefined();
   });
 
   it('moves a stale worktree onto the branch tip', async () => {

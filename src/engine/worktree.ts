@@ -234,6 +234,22 @@ export async function effectiveBaseSha(repoPath: string, baseRef: string, headRe
 }
 
 /**
+ * The sinceSha a delta review should use, or undefined to review the whole
+ * changeset. A rebase orphans the previously reviewed commit, and diffing
+ * against an orphan silently falls back to their common ancestor — the
+ * *original* branch point — which re-reviews the entire branch while claiming
+ * to be incremental. Dropping it is honest; the caller says so in the log.
+ */
+export async function usableSinceSha(
+  repoPath: string,
+  sinceSha: string | undefined,
+  headRef: string,
+): Promise<string | undefined> {
+  if (!sinceSha) return undefined;
+  return (await isAncestor(repoPath, sinceSha, headRef)) ? sinceSha : undefined;
+}
+
+/**
  * Diff of a branch against its effective base (what a PR would show). Passing a
  * commit as baseRef — a delta review's sinceSha — compares against that commit
  * directly, since a sha has no upstream to advance to.

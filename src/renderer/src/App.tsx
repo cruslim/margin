@@ -387,10 +387,12 @@ export function App() {
         });
         patchSession(session.key, (s) => ({
           status: 'done',
-          // Delta reviews append new findings; full reviews replace.
-          findings: sinceSha ? [...s.findings, ...result.findings] : result.findings,
+          // Delta reviews append new findings; full reviews replace. Trust the
+          // result, not the request: a delta whose branch had been rebased falls
+          // back to reviewing everything, and those findings are the whole set.
+          findings: result.incremental ? [...s.findings, ...result.findings] : result.findings,
           changeSummary: result.changeSummary,
-          costUsd: sinceSha ? (s.costUsd ?? 0) + (result.costUsd ?? 0) : result.costUsd,
+          costUsd: result.incremental ? (s.costUsd ?? 0) + (result.costUsd ?? 0) : result.costUsd,
           model: result.model,
           usage: result.usage,
           sdkSessionId: result.sessionId,

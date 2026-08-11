@@ -8,12 +8,14 @@ import type {
   DismissedFinding,
   FileDiff,
   Finding,
+  RefState,
   RepoInfo,
   ReviewTarget,
   Session,
 } from '../../shared/ipc.js';
 import { reanchor } from './components/reanchor.js';
 import { answererFromSetting } from './components/answerer.js';
+import { baseLabel } from './components/baseLabel.js';
 import { findingItemId, isFindingItem } from '../../shared/findingItem.js';
 
 /** Which thread the in-flight chat turn belongs to, for routing streamed text. */
@@ -59,6 +61,9 @@ export function sessionTitle(s: Session): string {
   return s.headRef ?? 'uncommitted changes';
 }
 
+/** The branch left open at quit, reopened on the next launch. */
+const ACTIVE_SESSION_KEY = 'margin.activeSession';
+
 /** File to open by default: something hand-written — a lockfile is rarely what you came to read. */
 function firstReadable(files: ChangedFile[]): string | null {
   return (files.find((f) => !f.generated) ?? files[0])?.path ?? null;
@@ -78,6 +83,13 @@ export function App() {
   const [openDiffError, setOpenDiffError] = useState<string | null>(null);
   /** Commits on the active branch, listed under its row in the sidebar. */
   const [branchCommits, setBranchCommits] = useState<CommitInfo[]>([]);
+  /**
+   * Where the active branch's refs stood when its changeset was last read —
+   * the baseline the focus check compares against, and the source of the
+   * sidebar's stale-base note. Tagged with the session key so a slow read can't
+   * describe the branch you just switched away from.
+   */
+  const [activeRefs, setActiveRefs] = useState<{ key: string; refs: RefState } | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   /** Bumped by the file list's conversation icon; DiffPane scrolls to the thread. */
   const [revealConvo, setRevealConvo] = useState(0);
@@ -141,6 +153,10 @@ export function App() {
     window.margin.loadState().then((state) => {
       setRepos(state.repos);
       setSessions(state.sessions);
+      // Reopen the branch that was showing at quit. Guarded on the session
+      // still existing — it may have been deleted with its repo since.
+      const last = localStorage.getItem(ACTIVE_SESSION_KEY);
+      if (last && state.sessions.some((s) => s.key === last)) setActiveKey(last);
       loaded.current = true;
       setBooting(false);
       // loadState serves the stored snapshot without touching git — refresh
@@ -154,6 +170,14 @@ export function App() {
       }
     });
   }, []);
+
+  // Remember the open branch for the next launch. Held back until the load
+  // above has run, or the initial null would erase the key before it is read
+  useEffect(() => {
+    if (!loaded.current || window.margin.smokeConfig()) return;
+    if (activeKey) localStorage.setItem(ACTIVE_SESSION_KEY, activeKey);
+    else localStorage.removeItem(ACTIVE_SESSION_KEY);
+  }, [activeKey]);
 
   // Debounced write-through of sessions to their JSON files.
   useEffect(() => {
@@ -207,18 +231,26 @@ export function App() {
     };
   }, [activeKey, active?.repoPath, active?.baseRef, active?.headRef]);
 
-  // Commits on the active branch. Keyed on the same things as the file list plus
-  // the refresh counter, so ↻ re-reads the commit list along with the changeset.
+  // Commits on the active branch, and where its refs stand. Keyed on the same
+  // things as the file list plus the refresh counter, so ↻ re-reads both along
+  // with the changeset.
   useEffect(() => {
     if (!active?.headRef) {
       setBranchCommits([]);
+      setActiveRefs(null);
       return;
     }
     let cancelled = false;
+    const key = active.key;
+    const target = targetOf(active);
     window.margin
-      .branchCommits(targetOf(active))
+      .branchCommits(target)
       .then((c) => !cancelled && setBranchCommits(c))
       .catch(() => !cancelled && setBranchCommits([]));
+    window.margin
+      .refState(target)
+      .then((refs) => !cancelled && setActiveRefs(refs ? { key, refs } : null))
+      .catch(() => !cancelled && setActiveRefs(null));
     return () => {
       cancelled = true;
     };
@@ -266,6 +298,29 @@ export function App() {
     },
     [active, activeKey],
   );
+
+  /**
+   * Rebases, amends and new commits happen in a terminal, so regaining focus is
+   * the moment to notice them — nothing else tells the app the repo moved.
+   *
+   * Gated on the refs having actually moved: refetching unconditionally would
+   * blank and re-anchor the open diff on every alt-tab, and a rev-parse costs
+   * nothing next to re-reading a changeset. That leaves ↻ as the way to pick up
+   * work the refs can't reveal — above all a working-tree session, whose
+   * uncommitted edits move no ref at all.
+   */
+  useEffect(() => {
+    if (!active?.headRef || !activeRefs || activeRefs.key !== active.key) return;
+    const { key, refs } = activeRefs;
+    const target = targetOf(active);
+    const onFocus = async () => {
+      const now = await window.margin.refState(target).catch(() => null);
+      if (!now || (now.headSha === refs.headSha && now.baseSha === refs.baseSha)) return;
+      await refreshSession(key);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [active, activeRefs, refreshSession]);
 
   const addRepo = useCallback(async () => {
     const repo = await window.margin.pickRepo();
@@ -350,10 +405,12 @@ export function App() {
         });
         patchSession(session.key, (s) => ({
           status: 'done',
-          // Delta reviews append new findings; full reviews replace.
-          findings: sinceSha ? [...s.findings, ...result.findings] : result.findings,
+          // Delta reviews append new findings; full reviews replace. Trust the
+          // result, not the request: a delta whose branch had been rebased falls
+          // back to reviewing everything, and those findings are the whole set.
+          findings: result.incremental ? [...s.findings, ...result.findings] : result.findings,
           changeSummary: result.changeSummary,
-          costUsd: sinceSha ? (s.costUsd ?? 0) + (result.costUsd ?? 0) : result.costUsd,
+          costUsd: result.incremental ? (s.costUsd ?? 0) + (result.costUsd ?? 0) : result.costUsd,
           model: result.model,
           usage: result.usage,
           sdkSessionId: result.sessionId,
@@ -1015,6 +1072,8 @@ export function App() {
     ],
   );
 
+  // Only meaningful once the refs have been read for *this* session.
+  const activeBase = baseLabel(active?.baseRef ?? '', activeRefs?.key === activeKey ? activeRefs.refs : undefined);
   const activeScope = active ? chatScope[active.key] : undefined;
   const activeStream = active ? streamText[active.key] ?? '' : '';
   const deltaAvailable = !!(active?.lastReviewedSha && active.headRef && active.status === 'done');
@@ -1038,7 +1097,22 @@ export function App() {
           <div className="topbar-title">
             <span className="repo-name">{active.repoName}</span>
             <span className="session-name">{sessionTitle(active)}</span>
-            <span className="base-ref">vs {active.baseRef}</span>
+            {/* This branch has landed already — the reason nothing is ahead of the
+                remote, and worth knowing before spending a review on it. */}
+            {activeBase.merged && (
+              <span className="merged-pill" title={activeBase.detail}>
+                ✓ merged into {activeBase.merged}
+              </span>
+            )}
+            {/* Names the ref actually compared against, which isn't the session's
+                own base ref for a rebased or already-merged branch. The pill above
+                already says why in the merged case, so it isn't repeated here. */}
+            <span className="base-ref" title={activeBase.detail}>
+              vs {activeBase.ref}
+              {activeBase.note && !activeBase.merged && (
+                <span className="base-ref-note"> ({activeBase.note})</span>
+              )}
+            </span>
           </div>
           <div className="topbar-actions">
             <label className="labelled-select">
@@ -1095,6 +1169,7 @@ export function App() {
         onDeleteSession={deleteSession}
         onRefreshSession={refreshSession}
         activeCommits={branchCommits}
+        activeRefs={activeRefs?.key === activeKey ? activeRefs.refs : undefined}
         onRemoveRepo={removeRepo}
         onRefreshRepo={refreshRepo}
         onEditInstructions={setInstructionsRepo}

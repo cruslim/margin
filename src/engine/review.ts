@@ -2,7 +2,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { generatedFilesNote } from '../shared/generated.js';
 import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
 import type { Finding, ReviewOptions, ReviewResult, ReviewTarget, TokenUsage } from './types.js';
-import { branchDiff, createWorktree, resolveSha, workingTreeDiff } from './worktree.js';
+import { branchDiff, createWorktree, resolveSha, usableSinceSha, workingTreeDiff } from './worktree.js';
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];
 
@@ -73,9 +73,19 @@ export async function runReview(
   let diff: string;
   let workDir: string;
   let headSha: string | null = null;
+  // A rebase since the last review orphans sinceSha, which would make the
+  // "incremental" diff quietly span the whole branch — review it all, and say so.
+  const sinceSha = target.headRef
+    ? await usableSinceSha(target.repoPath, opts.sinceSha, target.headRef)
+    : undefined;
+  if (opts.sinceSha && !sinceSha) {
+    events.onProgress?.('[review] branch was rebased since the last review — reviewing the full changeset.');
+  }
+  opts = { ...opts, sinceSha };
+
   if (target.headRef) {
     headSha = await resolveSha(target.repoPath, target.headRef);
-    diff = await branchDiff(target.repoPath, opts.sinceSha ?? target.baseRef, target.headRef);
+    diff = await branchDiff(target.repoPath, sinceSha ?? target.baseRef, target.headRef);
     workDir = await createWorktree(target.repoPath, target.headRef);
   } else {
     diff = await workingTreeDiff(target.repoPath);
@@ -172,6 +182,7 @@ export async function runReview(
     changeSummary: parsed.changeSummary,
     model,
     headSha,
+    incremental: !!sinceSha,
     usage,
     costUsd,
     durationMs: Date.now() - started,

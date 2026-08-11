@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, type WebContents } from 'electron';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import fixPath from 'fix-path';
@@ -118,7 +118,7 @@ if (app.isPackaged) {
 // packaged app's productName is "Margin", which would otherwise move
 // userData and orphan existing sessions.
 app.setPath('userData', join(app.getPath('appData'), 'margin'));
-import { openRepo, changedFiles, branchCommits, fileDiff, applyPatch } from './gitService.js';
+import { openRepo, changedFiles, branchCommits, fileDiff, applyPatch, refState } from './gitService.js';
 import { runReview } from '../engine/review.js';
 import { toAgentDefinitions } from '../engine/agents.js';
 import { chat } from '../engine/chat.js';
@@ -127,7 +127,7 @@ import { runCodeRabbitReview } from '../engine/coderabbit.js';
 import { verifyFindings } from '../engine/verify.js';
 import type { Finding } from '../engine/types.js';
 import type { AppSettings } from '../shared/ipc.js';
-import { createWorktree, removeWorktree } from '../engine/worktree.js';
+import { createWorktree, removeWorktree, syncWorktree } from '../engine/worktree.js';
 import { resolveTheme } from '../shared/themes.js';
 import * as storage from './storage.js';
 import { collectReplies, ensureBridge, itemId, submitTurn, withdrawTurn } from './bridge.js';
@@ -168,14 +168,20 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory'],
       title: 'Choose a git repository',
+      // Reopen where the last repo came from; undefined on a first pick leaves
+      // the system default. A since-deleted path is macOS's to fall back from.
+      defaultPath: await storage.getLastPickDir(),
     });
     if (result.canceled || !result.filePaths[0]) return null;
+    // Best-effort: a failed write must not cost the user the repo they picked.
+    await storage.setLastPickDir(dirname(result.filePaths[0])).catch(() => {});
     return openRepo(result.filePaths[0]);
   });
 
   ipcMain.handle('repo:open', (_e, path: string) => openRepo(path));
   ipcMain.handle('diff:files', (_e, target: ReviewTarget) => changedFiles(target));
   ipcMain.handle('git:commits', (_e, target: ReviewTarget) => branchCommits(target));
+  ipcMain.handle('git:refState', (_e, target: ReviewTarget) => refState(target));
   ipcMain.handle('diff:file', (_e, target: ReviewTarget, path: string) => fileDiff(target, path));
 
   ipcMain.handle('settings:get', () => storage.loadSettings());
@@ -305,7 +311,16 @@ app.whenReady().then(async () => {
   // a few days, and spawning the SDK CLI in a missing cwd fails with a
   // misleading "spawn node ENOENT". Recreate the worktree when it's gone.
   ipcMain.handle('workdir:ensure', async (_e, target: ReviewTarget, workDir: string | null) => {
-    if (workDir && existsSync(workDir)) return { workDir, recreated: false };
+    if (workDir && existsSync(workDir)) {
+      // The worktree is detached at whatever the branch pointed at when the
+      // review ran. A rebase or a new commit since then would have chat reading
+      // files that no longer match the diff on screen, so move it up first.
+      const moved =
+        target.headRef && workDir !== target.repoPath
+          ? await syncWorktree(target.repoPath, workDir, target.headRef).catch(() => false)
+          : false;
+      return { workDir, recreated: false, resynced: moved };
+    }
     const fresh = target.headRef ? await createWorktree(target.repoPath, target.headRef) : target.repoPath;
     return { workDir: fresh, recreated: workDir !== null && fresh !== workDir };
   });

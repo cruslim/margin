@@ -7,6 +7,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 ## Features
 
 - **Reviews of local refs** — pick a branch (searchable, sorted by latest commit) vs any base, or your uncommitted working tree; no remote, no PR required
+- **Rebase-aware** — rebase onto `origin/main` while your local `main` is behind and the changeset still shows only your commits, not the upstream ones the rebase pulled in (the header names the ref it really compared against); a branch that has already landed upstream is flagged `✓ merged into origin/main` and stays reviewable instead of coming up empty; commits made in your terminal show up when you focus the window; and a delta re-review of a rebased branch falls back to the full changeset instead of re-reviewing it as "new"
 - **Split/unified diff viewer** with inline finding cards anchored to file/line, and a file list (tree or flat) with per-file finding and conversation indicators
 - **Chat** — general session chat, per-finding threads, and GitHub-style line-anchored comment threads (hover a diff line, click +; works even before a review runs), all streamed live with copyable replies
 - **Resolvable conversations** — mark a comment thread resolved to collapse it; the file list shows which files have ongoing (blue) vs fully resolved (green) conversations

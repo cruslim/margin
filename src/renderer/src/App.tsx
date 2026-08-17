@@ -992,15 +992,22 @@ export function App() {
 
   // Export the review as Markdown via the OS save dialog, filtered exactly like
   // the findings panel (dismissals out, refuted demoted to one-liners).
-  const [exported, setExported] = useState(false);
+  // Keyed by session, not a boolean: switching branches inside the confirmation
+  // window must not show "✓ exported" on a session that wasn't.
+  const [exported, setExported] = useState<string | null>(null);
+  const exportedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exportReview = useCallback(async () => {
     if (!active) return;
     const md = sessionToMarkdown(active, { isDismissed: (f) => dismissedKeys.has(dismissalKey(f)) });
     const name = `${active.repoName}-${sessionTitle(active).replace(/[^\w.-]+/g, '-')}-review.md`;
-    const path = await window.margin.exportMarkdown(name, md).catch(() => null);
-    if (path) {
-      setExported(true);
-      setTimeout(() => setExported(false), 1500);
+    try {
+      const path = await window.margin.exportMarkdown(name, md);
+      if (!path) return; // dialog cancelled — not a failure, nothing to confirm
+      if (exportedTimer.current != null) clearTimeout(exportedTimer.current);
+      setExported(active.key);
+      exportedTimer.current = setTimeout(() => setExported(null), 1500);
+    } catch (err) {
+      window.alert(`Export failed: ${String(err)}`);
     }
   }, [active, dismissedKeys]);
 
@@ -1152,7 +1159,7 @@ export function App() {
                 disabled={active.status === 'reviewing'}
                 onClick={exportReview}
               >
-                {exported ? '✓ exported' : 'export'}
+                {exported === active.key ? '✓ exported' : 'export'}
               </button>
             )}
             {deltaAvailable && (

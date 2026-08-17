@@ -440,6 +440,18 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('patch:apply', (_e, repoPath: string, patch: string) => applyPatch(repoPath, patch));
 
+  ipcMain.handle('export:markdown', async (event, defaultName: string, content: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)!;
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Export review as Markdown',
+      defaultPath: join(app.getPath('documents'), defaultName),
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, content, 'utf8');
+    return result.filePath;
+  });
+
   ipcMain.handle('instructions:get', (_e, repoPath: string) => storage.getRepoInstructions(repoPath));
   ipcMain.handle('instructions:save', (_e, repoPath: string, text: string) => storage.saveRepoInstructions(repoPath, text));
 

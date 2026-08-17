@@ -21,6 +21,7 @@ const api: MarginApi = {
   sendChat: (sessionKey, sdkSessionId, workDir, message, opts) =>
     ipcRenderer.invoke('chat:send', sessionKey, sdkSessionId, workDir, message, opts),
   applyPatch: (repoPath, patch) => ipcRenderer.invoke('patch:apply', repoPath, patch),
+  exportMarkdown: (defaultName, content) => ipcRenderer.invoke('export:markdown', defaultName, content),
   bridgeDir: (session) => ipcRenderer.invoke('bridge:dir', session),
   bridgeSubmit: (session, turn) => ipcRenderer.invoke('bridge:submit', session, turn),
   bridgeWithdraw: (session, threadId, turn) => ipcRenderer.invoke('bridge:withdraw', session, threadId, turn),

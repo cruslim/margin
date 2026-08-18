@@ -210,6 +210,7 @@ export function SettingsModal(props: { onClose: () => void }) {
           >
             settings.json
           </button>
+          <span className="settings-version" title="Margin version">v{__APP_VERSION__}</span>
           <button className="icon-btn" onClick={props.onClose}>Cancel</button>
           <button className="run-btn small" onClick={save}>Save</button>
         </div>

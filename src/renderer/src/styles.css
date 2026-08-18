@@ -975,7 +975,10 @@ td.diff-line-old-num, td.diff-line-new-num, .diff-line-num { cursor: pointer; }
   padding-right: 6px;
   margin-right: -8px;
 }
-.settings-json { margin-right: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.settings-json { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+/* Carries the auto margin that used to sit on .settings-json, so the pair stays
+   left while Cancel/Save keep to the right. */
+.settings-version { margin-right: auto; align-self: center; color: var(--text-dim); font-size: 11px; }
 .settings-tabs { margin: -6px 0 2px; }
 .theme-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .theme-row select, .theme-row input[type="text"] {

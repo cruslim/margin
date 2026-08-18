@@ -304,6 +304,11 @@ export interface MarginApi {
    * retrying with lenient matching; `note` says when a lenient level was needed.
    */
   applyPatch(repoPath: string, patch: string): Promise<{ ok: boolean; error?: string; note?: string }>;
+  /**
+   * Save an exported review to disk via the OS save dialog. Returns the chosen
+   * path, or null when the user cancels.
+   */
+  exportMarkdown(defaultName: string, content: string): Promise<string | null>;
   getSettings(): Promise<AppSettings>;
   /** Open settings.json in the OS default editor (written first so every key is present). */
   openSettingsFile(): Promise<void>;

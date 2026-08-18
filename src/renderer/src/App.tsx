@@ -17,6 +17,7 @@ import { reanchor } from './components/reanchor.js';
 import { answererFromSetting } from './components/answerer.js';
 import { baseLabel } from './components/baseLabel.js';
 import { findingItemId, isFindingItem } from '../../shared/findingItem.js';
+import { sessionToMarkdown } from '../../shared/exportMarkdown.js';
 
 /** Which thread the in-flight chat turn belongs to, for routing streamed text. */
 export type ChatScope = { type: 'chat' } | { type: 'finding'; index: number } | { type: 'comment'; id: string };
@@ -989,6 +990,27 @@ export function App() {
   );
   const flaggedFiles = useMemo(() => new Set(activeFindings.map((f) => f.file)), [activeFindings]);
 
+  // Export the review as Markdown via the OS save dialog, filtered exactly like
+  // the findings panel (dismissals out, refuted demoted to one-liners).
+  // Keyed by session, not a boolean: switching branches inside the confirmation
+  // window must not show "✓ exported" on a session that wasn't.
+  const [exported, setExported] = useState<string | null>(null);
+  const exportedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exportReview = useCallback(async () => {
+    if (!active) return;
+    const md = sessionToMarkdown(active, { isDismissed: (f) => dismissedKeys.has(dismissalKey(f)) });
+    const name = `${active.repoName}-${sessionTitle(active).replace(/[^\w.-]+/g, '-')}-review.md`;
+    try {
+      const path = await window.margin.exportMarkdown(name, md);
+      if (!path) return; // dialog cancelled — not a failure, nothing to confirm
+      if (exportedTimer.current != null) clearTimeout(exportedTimer.current);
+      setExported(active.key);
+      exportedTimer.current = setTimeout(() => setExported(null), 1500);
+    } catch (err) {
+      window.alert(`Export failed: ${String(err)}`);
+    }
+  }, [active, dismissedKeys]);
+
   /** Comment threads for the open file, re-anchored the same way. */
   const fileComments = useMemo(() => {
     const mine = (active?.comments ?? []).filter((c) => c.file === selectedFile);
@@ -1130,6 +1152,16 @@ export function App() {
                 <option value="haiku">haiku</option>
               </select>
             </label>
+            {(active.findings.length > 0 || !!active.changeSummary || (active.comments?.length ?? 0) > 0) && (
+              <button
+                className="icon-btn"
+                title="Export this review as Markdown — summary, findings, threads"
+                disabled={active.status === 'reviewing'}
+                onClick={exportReview}
+              >
+                {exported === active.key ? '✓ exported' : 'export'}
+              </button>
+            )}
             {deltaAvailable && (
               <button
                 className="icon-btn"

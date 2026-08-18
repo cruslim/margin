@@ -1,4 +1,4 @@
-import type { ChatMessage, Comment, Session } from './ipc.js';
+import type { ChatMessage, Comment, Session, SpecialistReport } from './ipc.js';
 import type { Finding } from '../engine/types.js';
 
 const SEV_ORDER: Record<Finding['severity'], number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -43,6 +43,11 @@ export function sessionToMarkdown(s: Session, opts: ExportOptions = {}): string 
     out.push('## Findings\n\nNone.');
   }
 
+  if (s.specialistReports?.length) {
+    out.push('## Checked by specialists');
+    for (const r of s.specialistReports) out.push(...specialistSection(r));
+  }
+
   if (refuted.length > 0) {
     out.push(
       `## Refuted by verifier (${refuted.length})`,
@@ -84,6 +89,23 @@ function findingSection(f: Finding, thread: ChatMessage[] | undefined): string[]
   if (f.failureScenario) out.push(f.failureScenario.trim());
   if (f.snippet) out.push(codeBlock(f.snippet, extOf(f.file)));
   if (thread && thread.length > 0) out.push(threadBlock(thread, 'Margin'));
+  return out;
+}
+
+const CHECK_MARK: Record<SpecialistReport['checks'][number]['status'], string> = {
+  pass: '✓',
+  finding: '✗',
+  unclear: '?',
+};
+
+/** Negative assurance travels with the export: what was checked, not just what was found. */
+function specialistSection(r: SpecialistReport): string[] {
+  const out: string[] = [];
+  out.push(`### @${r.agent}${r.ran ? '' : ' — skipped'}`);
+  if (r.reason) out.push(r.reason);
+  if (r.checks.length > 0) {
+    out.push(r.checks.map((c) => `- ${CHECK_MARK[c.status]} ${c.check}${c.note ? ` — ${c.note}` : ''}`).join('\n'));
+  }
   return out;
 }
 

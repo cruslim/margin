@@ -25,6 +25,27 @@ export interface Finding {
   verdictReason?: string;
 }
 
+/** One rubric item's outcome — the "negative assurance" a specialist gives even when it finds nothing. */
+export interface RubricCheckResult {
+  check: string;
+  /** 'finding' means at least one reported finding came from this check. */
+  status: 'pass' | 'finding' | 'unclear';
+  /** One line of evidence grounded in the code, not a restatement of the check. */
+  note: string;
+}
+
+/** What a specialist finder did on a review: whether it ran, why, and what it checked. */
+export interface SpecialistReport {
+  /** Specialist name from settings (e.g. 'security'). */
+  agent: string;
+  /** False when the specialist judged the changeset outside its specialty. */
+  ran: boolean;
+  /** Why it ran, or why it was skipped — shown either way. */
+  reason: string;
+  checks: RubricCheckResult[];
+  costUsd: number | null;
+}
+
 export interface ReviewTarget {
   repoPath: string;
   /** Ref the changes are compared against, e.g. "main". */

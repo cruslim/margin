@@ -124,8 +124,9 @@ import { toAgentDefinitions } from '../engine/agents.js';
 import { chat } from '../engine/chat.js';
 import { parseModelList, runBasicReview } from '../engine/basicReview.js';
 import { runCodeRabbitReview } from '../engine/coderabbit.js';
+import { runSpecialistReview } from '../engine/specialists.js';
 import { verifyFindings } from '../engine/verify.js';
-import type { Finding } from '../engine/types.js';
+import type { Finding, SpecialistReport } from '../engine/types.js';
 import type { AppSettings } from '../shared/ipc.js';
 import { createWorktree, removeWorktree, syncWorktree } from '../engine/worktree.js';
 import { resolveTheme } from '../shared/themes.js';
@@ -229,7 +230,7 @@ app.whenReady().then(async () => {
       // Extra finders run in parallel with the agentic review; each is
       // best-effort — a failed finder becomes a transcript line, not a
       // failed review.
-      const extraFinders: Array<Promise<{ findings: Finding[] }>> = [];
+      const extraFinders: Array<Promise<{ findings: Finding[]; report?: SpecialistReport }>> = [];
       const finderNames: string[] = [];
       if (settings.openai.enabled) {
         for (const model of parseModelList(settings.openai.model)) {
@@ -241,6 +242,11 @@ app.whenReady().then(async () => {
         finderNames.push('coderabbit');
         extraFinders.push(runCodeRabbitReview(target, progress));
       }
+      for (const agent of settings.agents) {
+        if (!agent.finder || !agent.name.trim() || !agent.instructions.trim()) continue;
+        finderNames.push(`@${agent.name.trim()}`);
+        extraFinders.push(runSpecialistReview(target, agent, { ...opts, dismissed, instructions }, progress));
+      }
 
       const [main, extras] = await Promise.all([
         runReview(target, { onProgress: progress }, { ...opts, dismissed, instructions }),
@@ -248,12 +254,16 @@ app.whenReady().then(async () => {
       ]);
 
       const extraFindings: Finding[] = [];
+      const specialistReports: SpecialistReport[] = [];
       extras.forEach((r, i) => {
-        if (r.status === 'fulfilled') extraFindings.push(...r.value.findings);
-        else progress(`[${finderNames[i]}] failed: ${String(r.reason).slice(0, 200)}`);
+        if (r.status === 'fulfilled') {
+          extraFindings.push(...r.value.findings);
+          if (r.value.report) specialistReports.push(r.value.report);
+        } else progress(`[${finderNames[i]}] failed: ${String(r.reason).slice(0, 200)}`);
       });
       let findings = [...main.findings, ...extraFindings];
       let costUsd = main.costUsd;
+      for (const report of specialistReports) costUsd = (costUsd ?? 0) + (report.costUsd ?? 0);
 
       if (settings.verifier.enabled && findings.length > 0) {
         progress(`[verifier] cross-examining ${findings.length} finding(s)`);
@@ -270,7 +280,7 @@ app.whenReady().then(async () => {
           progress(`[verifier] failed: ${String(err).slice(0, 200)} — findings left unverified`);
         }
       }
-      return { ...main, findings, costUsd };
+      return { ...main, findings, costUsd, specialistReports };
     } finally {
       // In auto-run smoke mode, capture after the review settles into the UI
       // (unless a smoke chat turn follows — then capture after that instead).

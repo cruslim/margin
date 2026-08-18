@@ -132,6 +132,32 @@ describe('sessionToMarkdown', () => {
     expect(md).toContain('````ts');
   });
 
+  it('renders specialist reports with per-check marks and skip reasons', () => {
+    const md = sessionToMarkdown(
+      session({
+        specialistReports: [
+          {
+            agent: 'security',
+            ran: true,
+            reason: 'The diff touches auth.',
+            checks: [
+              { check: 'injection', status: 'pass', note: 'parameterized everywhere' },
+              { check: 'secrets logged', status: 'finding', note: 'token written to debug log' },
+            ],
+            costUsd: 0.03,
+          },
+          { agent: 'performance', ran: false, reason: 'No hot paths touched.', checks: [], costUsd: null },
+        ],
+      }),
+    );
+    expect(md).toContain('## Checked by specialists');
+    expect(md).toContain('### @security');
+    expect(md).toContain('- ✓ injection — parameterized everywhere');
+    expect(md).toContain('- ✗ secrets logged — token written to debug log');
+    expect(md).toContain('### @performance — skipped');
+    expect(md).toContain('No hot paths touched.');
+  });
+
   it('quotes multi-line replies line by line', () => {
     const md = sessionToMarkdown(
       session({

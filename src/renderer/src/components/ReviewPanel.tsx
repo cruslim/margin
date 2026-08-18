@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { ChatMessage, DismissedFinding, Finding } from '../../../shared/ipc.js';
+import type { ChatMessage, DismissedFinding, Finding, SpecialistReport } from '../../../shared/ipc.js';
 import type { ChatScope, Session } from '../App.js';
 import { dismissalKey } from '../App.js';
 import { FindingCard } from './FindingCard.js';
@@ -123,6 +123,7 @@ export function ReviewPanel(props: {
               ) : (
                 sorted.map(({ finding }) => props.renderFinding(finding))
               )}
+              {(s.specialistReports?.length ?? 0) > 0 && <SpecialistSection reports={s.specialistReports!} />}
               {refuted.length > 0 && <RefutedSection refuted={refuted} />}
               {props.dismissals.length > 0 && (
                 <DismissedSection dismissals={props.dismissals} onRestore={props.onRestore} />
@@ -311,6 +312,54 @@ function ChatTab(props: {
         )}
       </div>
       <ChatInput disabled={props.busy} placeholder="Ask about this changeset…" onSend={props.onSend} />
+    </div>
+  );
+}
+
+const CHECK_GLYPH: Record<SpecialistReport['checks'][number]['status'], string> = {
+  pass: '✓',
+  finding: '●',
+  unclear: '?',
+};
+
+/**
+ * Negative assurance: what each specialist finder looked at, shown even when it
+ * found nothing — an empty findings list should mean "checked and clean", not
+ * "nobody looked". Skipped specialists stay visible with their reason, so a
+ * quiet run can't be mistaken for coverage.
+ */
+function SpecialistSection(props: { reports: SpecialistReport[] }) {
+  const [open, setOpen] = useState(false);
+  const ran = props.reports.filter((r) => r.ran);
+  const checks = ran.reduce((n, r) => n + r.checks.length, 0);
+  const passed = ran.reduce((n, r) => n + r.checks.filter((c) => c.status === 'pass').length, 0);
+  const label =
+    checks > 0
+      ? `Checked by specialists (${passed}/${checks} passed)`
+      : `Checked by specialists (${props.reports.length} skipped)`;
+  return (
+    <div className="dismissed-section specialist-section">
+      <button className="dismissed-toggle" onClick={() => setOpen(!open)}>
+        {open ? '▾' : '▸'} {label}
+      </button>
+      {open &&
+        props.reports.map((r) => (
+          <div key={r.agent} className="specialist-report">
+            <div className="specialist-head">
+              <span className="specialist-name">@{r.agent}</span>
+              <span className={r.ran ? 'specialist-reason' : 'specialist-reason skipped'}>
+                {r.ran ? r.reason : `skipped — ${r.reason}`}
+              </span>
+            </div>
+            {r.checks.map((c, i) => (
+              <div key={i} className={`check-row ${c.status}`} title={c.note}>
+                <span className="check-glyph">{CHECK_GLYPH[c.status]}</span>
+                <span className="check-name">{c.check}</span>
+                {c.note && <span className="check-note">{c.note}</span>}
+              </div>
+            ))}
+          </div>
+        ))}
     </div>
   );
 }

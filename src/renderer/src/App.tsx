@@ -410,6 +410,8 @@ export function App() {
           // result, not the request: a delta whose branch had been rebased falls
           // back to reviewing everything, and those findings are the whole set.
           findings: result.incremental ? [...s.findings, ...result.findings] : result.findings,
+          // Reports describe the latest pass, so they replace even on a delta.
+          specialistReports: result.specialistReports,
           changeSummary: result.changeSummary,
           costUsd: result.incremental ? (s.costUsd ?? 0) + (result.costUsd ?? 0) : result.costUsd,
           model: result.model,
@@ -921,6 +923,27 @@ export function App() {
                   summary: 'Off-by-one skips the last item.',
                   failureScenario: 'Checkout with 3 items charges for 2.',
                   snippet: '  for (let i = 0; i < items.length - 1; i++) {',
+                },
+              ],
+              // A specialist report too, so the negative-assurance UI is
+              // screenshotable without spending a real review.
+              specialistReports: [
+                {
+                  agent: 'security',
+                  ran: true,
+                  reason: 'The diff touches checkout and price handling.',
+                  checks: [
+                    { check: 'injection via unsanitized input', status: 'pass' as const, note: 'prices come from the typed catalog, no string interpolation into queries' },
+                    { check: 'secrets committed or logged', status: 'pass' as const, note: 'no new env reads or logging of request bodies' },
+                  ],
+                  costUsd: 0.03,
+                },
+                {
+                  agent: 'performance',
+                  ran: false,
+                  reason: 'One arithmetic loop over an in-memory cart; no I/O or query changes.',
+                  checks: [],
+                  costUsd: 0.01,
                 },
               ],
             }

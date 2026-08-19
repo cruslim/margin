@@ -5,7 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { detectOllama, ollamaNumCtx, runBasicReview } from './basicReview.js';
+import { detectOllama, ollamaNumCtx, parseModelList, runBasicReview } from './basicReview.js';
 
 const run = promisify(execFile);
 const git = (repo: string, args: string[]) => run('git', ['-C', repo, ...args]);
@@ -97,6 +97,21 @@ async function fakeOpenAi(): Promise<{ origin: string; requests: Array<Record<st
   const origin = await listen(server);
   return { origin, requests, close: () => server.close() };
 }
+
+describe('parseModelList', () => {
+  it('splits comma-separated names, trimming whitespace', () => {
+    expect(parseModelList('Qwen3-Coder, llama3.1')).toEqual(['Qwen3-Coder', 'llama3.1']);
+  });
+
+  it('returns a single name as a one-element list', () => {
+    expect(parseModelList('gpt-5')).toEqual(['gpt-5']);
+  });
+
+  it('drops empty entries and duplicates', () => {
+    expect(parseModelList(' llama3.1,, llama3.1 ,')).toEqual(['llama3.1']);
+    expect(parseModelList('  ')).toEqual([]);
+  });
+});
 
 describe('ollamaNumCtx', () => {
   it('sizes the context to the prompt plus output headroom', () => {

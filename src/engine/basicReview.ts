@@ -12,6 +12,11 @@ export interface BasicProvider {
   model: string;
 }
 
+/** The settings' model field holds one or more comma-separated model names. */
+export function parseModelList(model: string): string[] {
+  return [...new Set(model.split(',').map((m) => m.trim()).filter(Boolean))];
+}
+
 const MAX_FILES = 20;
 const MAX_FILE_CHARS = 25_000;
 const MAX_TOTAL_CHARS = 120_000;

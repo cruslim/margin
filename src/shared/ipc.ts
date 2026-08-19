@@ -185,6 +185,7 @@ export interface AppSettings {
     enabled: boolean;
     baseUrl: string;
     apiKey: string;
+    /** One model name, or several comma-separated — each runs as its own finder. */
     model: string;
   };
   /** Third finder: CodeRabbit CLI. Sends the diff to CodeRabbit's cloud. */

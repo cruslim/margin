@@ -76,11 +76,11 @@ export function SettingsModal(props: { onClose: () => void }) {
               />
             </label>
             <label>
-              Model
+              Model <span className="settings-hint">(comma-separate to run several — each reviews independently)</span>
               <input
                 type="text"
                 value={s.openai.model}
-                placeholder="e.g. gpt-5  ·  qwen2.5-coder for Ollama"
+                placeholder="e.g. gpt-5  ·  qwen2.5-coder, llama3.1 for Ollama"
                 onChange={(e) => setSettings({ ...s, openai: { ...s.openai, model: e.target.value } })}
               />
             </label>

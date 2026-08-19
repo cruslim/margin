@@ -122,7 +122,7 @@ import { openRepo, changedFiles, branchCommits, fileDiff, applyPatch, refState }
 import { runReview } from '../engine/review.js';
 import { toAgentDefinitions } from '../engine/agents.js';
 import { chat } from '../engine/chat.js';
-import { runBasicReview } from '../engine/basicReview.js';
+import { parseModelList, runBasicReview } from '../engine/basicReview.js';
 import { runCodeRabbitReview } from '../engine/coderabbit.js';
 import { verifyFindings } from '../engine/verify.js';
 import type { Finding } from '../engine/types.js';
@@ -231,9 +231,11 @@ app.whenReady().then(async () => {
       // failed review.
       const extraFinders: Array<Promise<{ findings: Finding[] }>> = [];
       const finderNames: string[] = [];
-      if (settings.openai.enabled && settings.openai.model) {
-        finderNames.push(settings.openai.model);
-        extraFinders.push(runBasicReview(target, settings.openai, { ...opts, dismissed, instructions }, progress));
+      if (settings.openai.enabled) {
+        for (const model of parseModelList(settings.openai.model)) {
+          finderNames.push(model);
+          extraFinders.push(runBasicReview(target, { ...settings.openai, model }, { ...opts, dismissed, instructions }, progress));
+        }
       }
       if (settings.coderabbit.enabled) {
         finderNames.push('coderabbit');

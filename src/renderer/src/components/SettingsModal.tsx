@@ -188,6 +188,31 @@ export function SettingsModal(props: { onClose: () => void }) {
                 value={a.instructions}
                 onChange={(e) => setSettings({ ...s, agents: s.agents.map((x, j) => (j === i ? { ...x, instructions: e.target.value } : x)) })}
               />
+              <label className="agent-finder">
+                <input
+                  type="checkbox"
+                  checked={!!a.finder}
+                  onChange={(e) => setSettings({ ...s, agents: s.agents.map((x, j) => (j === i ? { ...x, finder: e.target.checked || undefined } : x)) })}
+                />
+                Run as a finder on every review{' '}
+                <span className="settings-hint">
+                  (own agentic pass over the diff; skips itself when the changeset is outside its specialty)
+                </span>
+              </label>
+              {a.finder && (
+                <>
+                  <span className="settings-hint">
+                    Checks the finder reports on every review, one per line — each comes back
+                    pass/finding with evidence, so a clean review still shows what was looked at.
+                  </span>
+                  <textarea
+                    className="agent-rubric"
+                    placeholder={'e.g.\nN+1 queries or missing pagination\nblocking I/O on a hot path'}
+                    value={a.rubric ?? ''}
+                    onChange={(e) => setSettings({ ...s, agents: s.agents.map((x, j) => (j === i ? { ...x, rubric: e.target.value || undefined } : x)) })}
+                  />
+                </>
+              )}
             </div>
           ))}
           <button

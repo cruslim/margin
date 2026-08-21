@@ -190,7 +190,7 @@ export async function runReview(
   };
 }
 
-function summarizeInput(input: unknown): string {
+export function summarizeInput(input: unknown): string {
   if (input && typeof input === 'object') {
     const o = input as Record<string, unknown>;
     return String(o.file_path ?? o.pattern ?? o.path ?? '');
@@ -198,10 +198,13 @@ function summarizeInput(input: unknown): string {
   return '';
 }
 
-export function parseReviewOutput(text: string): { changeSummary: string; findings: Finding[] } {
-  // The agent is told to emit bare JSON, but its message may contain stray
-  // braces in surrounding prose (e.g. inline "{type: 'percent'}" examples).
-  // Try candidate {...} spans until one parses to the expected shape.
+/**
+ * Find the first {...} span in `text` that parses and satisfies `accept`.
+ * The agent is told to emit bare JSON, but its message may contain stray
+ * braces in surrounding prose (e.g. inline "{type: 'percent'}" examples), so
+ * candidate spans are tried until one matches the expected shape.
+ */
+export function scanForJson<T>(text: string, accept: (parsed: T) => boolean): T | null {
   const starts: number[] = [];
   const ends: number[] = [];
   for (let i = 0; i < text.length; i++) {
@@ -213,17 +216,21 @@ export function parseReviewOutput(text: string): { changeSummary: string; findin
       const end = ends[e];
       if (end <= start) break;
       try {
-        const parsed = JSON.parse(text.slice(start, end + 1)) as {
-          changeSummary?: string;
-          findings?: Finding[];
-        };
-        if (parsed.changeSummary !== undefined || Array.isArray(parsed.findings)) {
-          return { changeSummary: parsed.changeSummary ?? '', findings: parsed.findings ?? [] };
-        }
+        const parsed = JSON.parse(text.slice(start, end + 1)) as T;
+        if (accept(parsed)) return parsed;
       } catch {
         // keep scanning
       }
     }
   }
-  throw new Error(`Review output contained no parseable review JSON:\n${text}`);
+  return null;
+}
+
+export function parseReviewOutput(text: string): { changeSummary: string; findings: Finding[] } {
+  const parsed = scanForJson<{ changeSummary?: string; findings?: Finding[] }>(
+    text,
+    (o) => o.changeSummary !== undefined || Array.isArray(o.findings),
+  );
+  if (!parsed) throw new Error(`Review output contained no parseable review JSON:\n${text}`);
+  return { changeSummary: parsed.changeSummary ?? '', findings: parsed.findings ?? [] };
 }

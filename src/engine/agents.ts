@@ -7,6 +7,14 @@ export interface AgentConfig {
   instructions: string;
   /** SDK subagents accept only these tiers; anything else falls back to the session model. */
   model?: string;
+  /** Also run this specialist as a finder on every review. */
+  finder?: boolean;
+  /**
+   * Named checks the finder pass works through, one per line — each is reported
+   * pass/finding/unclear with evidence, so a clean review still shows what was
+   * looked at (see engine/specialists.ts).
+   */
+  rubric?: string;
 }
 
 const SUBAGENT_MODELS = new Set(['sonnet', 'opus', 'haiku']);

@@ -1,4 +1,5 @@
-import type { DismissedFinding, Finding, ReviewResult, ReviewTarget } from '../engine/types.js';
+import type { DismissedFinding, Finding, ReviewResult, ReviewTarget, SpecialistReport } from '../engine/types.js';
+import type { AgentConfig } from '../engine/agents.js';
 import type { ThemeSettings } from './themes.js';
 
 export interface ChangedFile {
@@ -141,6 +142,8 @@ export interface Session {
    * no such object, so it hangs off the session like collapsedFindings does.
    */
   pendingFindings?: Record<string, number>;
+  /** What each specialist finder checked on the last review — see engine/specialists.ts. */
+  specialistReports?: SpecialistReport[];
   /** Model override for review + chat in this session ('sonnet' | 'opus' | 'haiku'); unset = Claude Code default. */
   modelChoice?: string;
   /** Commit reviewed last time — enables delta re-reviews. */
@@ -198,8 +201,8 @@ export interface AppSettings {
     /** Model for the verifier session; '' = the session's model choice. */
     model: string;
   };
-  /** Specialist subagents assignable to comment threads. */
-  agents: Array<{ name: string; description: string; instructions: string; model?: string }>;
+  /** Specialist subagents assignable to comment threads, and optionally run as review finders. */
+  agents: AgentConfig[];
   /**
    * Who new comment threads go to before you change the picker: 'reviewer'
    * (Margin's own), 'my-agent' (handed over the file bridge), or a specialist's
@@ -221,12 +224,25 @@ export const DEFAULT_SETTINGS: AppSettings = {
       description: 'Security review specialist — attack surfaces, injection, authz, secrets.',
       instructions:
         'You are a security review specialist. Analyze the code you are asked about strictly through a security lens: injection, authn/authz gaps, secrets handling, unsafe deserialization, path traversal, SSRF. Ground every claim in the actual code (read it) and name concrete attack scenarios.',
+      rubric: [
+        'authz/permission check removed or bypassed',
+        'secrets or tokens committed, logged, or exposed to the client',
+        'injection (SQL/command/template/HTML) via unsanitized input',
+        'external input not validated at a trust boundary',
+        'TLS/signature/verification weakened or disabled',
+      ].join('\n'),
     },
     {
       name: 'performance',
       description: 'Performance specialist — complexity, allocations, N+1, hot paths.',
       instructions:
         'You are a performance specialist. Analyze the code you are asked about for algorithmic complexity, redundant work, N+1 patterns, unnecessary allocations, and blocking I/O on hot paths. Ground every claim in the actual code and quantify impact where possible.',
+      rubric: [
+        'N+1 queries or missing pagination',
+        'unbounded loops, queries, or allocations',
+        'blocking I/O or heavy work on a hot path',
+        'missing timeout/retry-with-backoff on network calls',
+      ].join('\n'),
     },
   ],
   defaultAnswerer: 'reviewer',
@@ -247,7 +263,7 @@ export interface MarginApi {
     sessionKey: string,
     target: ReviewTarget,
     opts?: { model?: string; sinceSha?: string },
-  ): Promise<ReviewResult>;
+  ): Promise<ReviewRunResult>;
   onReviewProgress(cb: (sessionKey: string, line: string) => void): () => void;
   /** Streaming text deltas for the in-flight chat/comment reply of a session. */
   onChatDelta(cb: (sessionKey: string, delta: string) => void): () => void;
@@ -322,4 +338,7 @@ export interface MarginApi {
   smokeConfig(): { repo: string; base: string; head: string; run: boolean; chat: string; comment: string; commentFile: string; commentLine: number; model: string; external: boolean; finding: boolean } | null;
 }
 
-export type { DismissedFinding, Finding, ReviewResult, ReviewTarget };
+/** What review:run actually returns: the engine result plus what main added around it. */
+export type ReviewRunResult = ReviewResult & { specialistReports?: SpecialistReport[] };
+
+export type { AgentConfig, DismissedFinding, Finding, ReviewResult, ReviewTarget, SpecialistReport };

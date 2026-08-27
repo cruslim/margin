@@ -40,7 +40,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 
 ## Requirements
 
-- macOS (packaging targets mac; `npm run dev` may work elsewhere but is untested)
+- macOS, Windows, or Linux (developed on macOS; the Windows and Linux installs follow the same flow but get less testing)
 - Node 20+
 - The [Claude Code](https://claude.com/claude-code) CLI installed and logged in — reviews run through your existing `claude` login via the Claude Agent SDK
 
@@ -48,8 +48,18 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 
 ```sh
 npm install
-npm run install-app    # builds and copies Margin.app to ~/Applications (unsigned, local use)
+npm run install-app    # builds and installs the app locally (unsigned)
 ```
+
+The install destination depends on your platform:
+
+| Platform | Installs to | Launch |
+| --- | --- | --- |
+| macOS | `~/Applications/Margin.app` | Spotlight / Launchpad |
+| Windows | `%LOCALAPPDATA%\Programs\Margin` | `Margin.exe` in that folder (pin it to Start) |
+| Linux | `~/.local/opt/margin`, launcher symlinked at `~/.local/bin/margin` | `margin` (make sure `~/.local/bin` is on your `PATH`) |
+
+The app is unsigned, so the first launch may need a security override (macOS: right-click → Open, or approve it under System Settings → Privacy & Security; Windows: SmartScreen → "More info" → "Run anyway").
 
 ## Development
 
@@ -81,8 +91,10 @@ npm run chat -- "Propose a fix for finding 1"
 - **Chat** (`src/engine/chat.ts`): resumes the review session by ID — the agent keeps everything it read and found. Worktrees stay alive until a session is closed so chat can keep reading files
 - **Persistence** (`src/main/storage.ts`): plain JSON files, human-readable, all local — no database
 
+Data lives in Electron's per-user app directory — `~/Library/Application Support/margin` on macOS, `%APPDATA%\margin` on Windows, `~/.config/margin` on Linux:
+
 ```
-~/Library/Application Support/margin/reviews/
+<app data dir>/reviews/
   <repo-name>-<hash>/          # hash of repo path, so same-named repos don't collide
     repo.json                  # repo path, name, branches
     dismissals.json            # findings dismissed in this repo (never re-reported)

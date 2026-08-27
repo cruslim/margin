@@ -217,7 +217,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   openai: { enabled: false, baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' },
   coderabbit: { enabled: false },
-  verifier: { enabled: false, model: '' },
+  verifier: { enabled: true, model: '' },
   agents: [
     {
       name: 'security',

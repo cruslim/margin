@@ -1,6 +1,6 @@
 import { query, type AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import { delegationPrompt } from './agents.js';
-import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
+import { mergeInstructions, readRepoGuidance } from './instructions.js';
 
 export interface ChatReply {
   sessionId: string;
@@ -52,7 +52,7 @@ export async function chat(
   // prompt; fresh sessions (commenting before any review ran) need them here.
   const projectInstructions = sessionId
     ? ''
-    : mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
+    : mergeInstructions(opts.instructions, await readRepoGuidance(workDir));
 
   // Subagents (and the Task tool that spawns them) are only exposed on turns
   // that explicitly target an agent, so plain turns stay deterministic. A

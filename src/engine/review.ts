@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { generatedFilesNote } from '../shared/generated.js';
-import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
+import { mergeInstructions, readRepoGuidance } from './instructions.js';
 import type { Finding, ReviewOptions, ReviewResult, ReviewTarget, TokenUsage } from './types.js';
 import { branchDiff, createWorktree, resolveSha, usableSinceSha, workingTreeDiff } from './worktree.js';
 
@@ -98,7 +98,7 @@ export async function runReview(
     );
   }
 
-  const projectInstructions = mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
+  const projectInstructions = mergeInstructions(opts.instructions, await readRepoGuidance(workDir));
 
   let sessionId = '';
   let resultText = '';

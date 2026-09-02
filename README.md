@@ -18,6 +18,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 - **Dismissal memory** — dismissed findings are hidden and never re-reported (per-repo `dismissals.json`, restorable)
 - **Generated files stay out of the way** — lockfiles, build output, snapshots, codegen and `@generated` files are tagged, dimmed, sorted last, and excluded from findings
 - **Per-repo instructions** — your own rules per repository, edited in the app and stored app-side (or a committed `.margin/margin.md` for team-shared rules); injected into every review and comment thread
+- **Reads the repo's Claude Code setup** — a committed `CLAUDE.md` and the skills under `.claude/skills/` are surfaced to every finder: agentic reviewers get a skill index and open a `SKILL.md` when it applies, single-shot finders get the bodies inlined. Nothing under `.claude/` is executed or loaded as settings, so repo hooks and MCP servers stay off
 - **Export** — save a review as Markdown (summary, findings with verdicts and their threads, comment threads) to paste into a PR description or hand to a teammate
 
 ### Diff & chat

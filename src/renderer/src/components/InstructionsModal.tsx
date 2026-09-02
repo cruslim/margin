@@ -21,7 +21,8 @@ export function InstructionsModal(props: { repo: RepoInfo; onClose: () => void }
         <h2>Review instructions — {props.repo.name}</h2>
         <p className="modal-note">
           Injected into every review and comment thread in this repository, alongside any committed{' '}
-          <code>.margin/margin.md</code>. Stored in the app — never written to the repo — and deleted
+          <code>.margin/margin.md</code>, <code>CLAUDE.md</code>, and skills under{' '}
+          <code>.claude/skills/</code>. Stored in the app — never written to the repo — and deleted
           when the repository is removed.
         </p>
         <textarea

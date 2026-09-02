@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { generatedFilesNote } from '../shared/generated.js';
-import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
+import { mergeInstructions, readRepoGuidance } from './instructions.js';
 import type { AgentConfig } from './agents.js';
 import type { Finding, ReviewOptions, ReviewTarget, RubricCheckResult, SpecialistReport } from './types.js';
 import { scanForJson, summarizeInput, TRANSIENT_API_ERROR } from './review.js';
@@ -173,7 +173,7 @@ export async function runSpecialistReview(
       };
     }
 
-    const projectInstructions = mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
+    const projectInstructions = mergeInstructions(opts.instructions, await readRepoGuidance(workDir));
     const checks = rubricChecks(agent.rubric);
     // The specialist's own model tier wins over the session choice, matching
     // how these agents behave when delegated a comment thread.

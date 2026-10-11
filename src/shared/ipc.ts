@@ -13,7 +13,6 @@ export interface ChangedFile {
   deletions?: number;
 }
 
-/** A commit on the branch under review (not in its base). */
 /**
  * Where a review target's refs stand right now. The renderer keeps the last one
  * it saw per session and compares on window focus: same shas means the repo
@@ -38,13 +37,54 @@ export interface RefState {
   mergedInto?: string;
 }
 
+/** A commit on the branch under review (not in its base). */
 export interface CommitInfo {
-  /** Abbreviated sha. */
+  /** Abbreviated sha, for display. */
   sha: string;
+  /** Full sha — what gets handed back to git. */
+  hash: string;
+  /** Full sha of the first parent; '' for a root commit. */
+  parent: string;
   subject: string;
+  /** The message after the subject line; '' when there's none. */
+  body: string;
   author: string;
   /** ISO 8601, author date. */
   date: string;
+}
+
+/**
+ * A slice of a branch's history to show instead of the whole changeset: the
+ * diff from `from` to `to`, both full shas. `from` is the empty tree for a
+ * span starting at a root commit.
+ */
+export interface CommitRange {
+  from: string;
+  to: string;
+}
+
+/** git's well-known empty tree: the "parent" a root commit is diffed against. */
+export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+/**
+ * How a file at a commit lines up with the same file at the branch tip.
+ *
+ * Comments and findings are anchored to the tip; a commit view is only a lens
+ * over them. This is what the lens needs to place them, and to refuse new
+ * comments on code that no longer exists at the tip.
+ */
+export interface LensMap {
+  /** The file's path at the tip — differs after a later rename; null once deleted. */
+  tipPath: string | null;
+  /** The file at the tip, for re-anchoring before mapping. '' when deleted. */
+  tipContent: string;
+  /**
+   * For each line of the commit's version (index 0 is line 1): its line number
+   * at the tip, or null when a later commit changed or removed it.
+   */
+  tipLine: (number | null)[];
+  /** Runs of superseded lines (commit-side numbers), with the commit that first changed them. */
+  superseded: { start: number; end: number; by: { hash: string; sha: string; subject: string } | null }[];
 }
 
 export interface FileDiff {
@@ -54,6 +94,8 @@ export interface FileDiff {
   /** Raw per-file git diff text (fed to the diff viewer as a hunk). */
   hunks: string[];
   lang: string;
+  /** Set when the diff is of a commit range rather than the whole changeset. */
+  lens?: LensMap;
 }
 
 export interface RepoInfo {
@@ -253,12 +295,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export interface MarginApi {
   pickRepo(): Promise<RepoInfo | null>;
   openRepo(path: string): Promise<RepoInfo | null>;
-  changedFiles(target: ReviewTarget): Promise<ChangedFile[]>;
+  /** Files in the changeset, or in just `range` of it when given. */
+  changedFiles(target: ReviewTarget, range?: CommitRange): Promise<ChangedFile[]>;
   /** Commits on the branch under review; empty for working-tree targets. */
   branchCommits(target: ReviewTarget): Promise<CommitInfo[]>;
   /** Cheap ref snapshot for spotting git activity outside the app; null for working-tree targets. */
   refState(target: ReviewTarget): Promise<RefState | null>;
-  fileDiff(target: ReviewTarget, path: string): Promise<FileDiff>;
+  /** One file's diff — of `range` when given, with the lens that maps it onto the tip. */
+  fileDiff(target: ReviewTarget, path: string, range?: CommitRange): Promise<FileDiff>;
   runReview(
     sessionKey: string,
     target: ReviewTarget,

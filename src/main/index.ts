@@ -133,7 +133,7 @@ import { resolveTheme } from '../shared/themes.js';
 import * as storage from './storage.js';
 import { collectReplies, ensureBridge, itemId, submitTurn, withdrawTurn } from './bridge.js';
 import type { ReviewTarget } from '../engine/types.js';
-import type { BridgeSession, BridgeTurn, DismissedFinding, RepoInfo, Session } from '../shared/ipc.js';
+import type { BridgeSession, BridgeTurn, CommitRange, DismissedFinding, RepoInfo, Session } from '../shared/ipc.js';
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
 
@@ -180,10 +180,12 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle('repo:open', (_e, path: string) => openRepo(path));
-  ipcMain.handle('diff:files', (_e, target: ReviewTarget) => changedFiles(target));
+  ipcMain.handle('diff:files', (_e, target: ReviewTarget, range?: CommitRange) => changedFiles(target, range));
   ipcMain.handle('git:commits', (_e, target: ReviewTarget) => branchCommits(target));
   ipcMain.handle('git:refState', (_e, target: ReviewTarget) => refState(target));
-  ipcMain.handle('diff:file', (_e, target: ReviewTarget, path: string) => fileDiff(target, path));
+  ipcMain.handle('diff:file', (_e, target: ReviewTarget, path: string, range?: CommitRange) =>
+    fileDiff(target, path, range),
+  );
 
   ipcMain.handle('settings:get', () => storage.loadSettings());
   ipcMain.handle('settings:openFile', async () => {

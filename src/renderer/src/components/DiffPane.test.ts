@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptySideFraction, revealCandidates, splitGeometry } from './DiffPane.js';
+import { commentTarget, emptySideFraction, revealCandidates, splitGeometry } from './DiffPane.js';
 
 describe('emptySideFraction', () => {
   it('leaves an ordinary diff to the saved preference', () => {
@@ -69,5 +69,32 @@ describe('revealCandidates', () => {
 
   it('offers nothing for a file with no threads', () => {
     expect(revealCandidates([]).size).toBe(0);
+  });
+});
+
+describe('commentTarget', () => {
+  // Commit version a,b,c; at the tip b was rewritten and a line inserted on top.
+  const lens = {
+    tipPath: 'moved.ts',
+    tipContent: 'x\na\nB\nc\n',
+    tipLine: [2, null, 4],
+    superseded: [{ start: 2, end: 2, by: { hash: 'h2', sha: 'h2', subject: 'rewrite b' } }],
+  };
+
+  it('keeps a comment where it was made outside commit view', () => {
+    expect(commentTarget(undefined, 'f.ts', 'old', 3, 4)).toEqual({ ok: true, file: 'f.ts', startLine: 3, endLine: 4 });
+  });
+
+  it('moves a commit-view comment onto the tip, following a rename', () => {
+    expect(commentTarget(lens, 'f.ts', 'new', 3, 3)).toEqual({ ok: true, file: 'moved.ts', startLine: 4, endLine: 4 });
+  });
+
+  it('refuses removed lines and superseded code in commit view', () => {
+    expect(commentTarget(lens, 'f.ts', 'old', 1, 1)).toEqual({ ok: false, reason: 'old', by: null });
+    expect(commentTarget(lens, 'f.ts', 'new', 1, 2)).toEqual({
+      ok: false,
+      reason: 'superseded',
+      by: { hash: 'h2', sha: 'h2', subject: 'rewrite b' },
+    });
   });
 });

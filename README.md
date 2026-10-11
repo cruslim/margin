@@ -23,6 +23,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 ### Diff & chat
 
 - **Split/unified diff viewer** with inline finding cards anchored to file/line, and a file list (tree or flat) with per-file finding and conversation indicators
+- **Commit by commit** — click a commit in the sidebar (shift-click for a span), or step with `[` / `]`, to read the branch the way it was built; "since review" jumps to just the new commits. Comments and findings stay anchored to the branch tip, so you can comment on any line that survives to it, and code a later commit rewrote is marked with where it went
 - **Chat everywhere** — general session chat, per-finding threads, and GitHub-style line-anchored comment threads (hover a diff line, click +; works even before a review runs), all streamed live
 - **Resolvable conversations** — mark a thread resolved to collapse it; the file list shows ongoing (blue) vs resolved (green) conversations
 

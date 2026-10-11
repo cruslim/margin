@@ -155,8 +155,9 @@ async function addLineCounts(
  */
 const MAX_COMMITS = 200;
 // Unit separator between fields, record separator between commits — neither can
-// appear in a commit subject, unlike newlines.
-const COMMIT_FORMAT = '%h%x1f%H%x1f%P%x1f%s%x1f%an%x1f%aI%x1e';
+// appear in a commit subject, unlike newlines. The body goes last: it's the one
+// field with newlines in it, and nothing after it can be thrown off by them.
+const COMMIT_FORMAT = '%h%x1f%H%x1f%P%x1f%s%x1f%an%x1f%aI%x1f%b%x1e';
 
 /** Parse `git log --format=COMMIT_FORMAT` output. Exported for tests. */
 export function parseCommitLog(out: string): CommitInfo[] {
@@ -165,9 +166,10 @@ export function parseCommitLog(out: string): CommitInfo[] {
     .map((record) => record.replace(/^\n/, ''))
     .filter((record) => record.trim())
     .map((record) => {
-      const [sha, hash, parents, subject, author, date] = record.split('\x1f');
+      const [sha, hash, parents, subject, author, date, ...body] = record.split('\x1f');
       // %P lists every parent; the first is the line the commit was made on.
-      return { sha, hash, parent: parents.split(' ')[0] ?? '', subject, author, date };
+      const parent = parents.split(' ')[0] ?? '';
+      return { sha, hash, parent, subject, author, date, body: body.join('\x1f').trim() };
     });
 }
 

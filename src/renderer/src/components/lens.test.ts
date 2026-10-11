@@ -8,6 +8,7 @@ const commit = (hash: string, parent: string): CommitInfo => ({
   hash,
   parent,
   subject: `subject ${hash}`,
+  body: '',
   author: 'a',
   date: '2026-10-01T00:00:00Z',
 });

@@ -46,6 +46,8 @@ export interface CommitInfo {
   /** Full sha of the first parent; '' for a root commit. */
   parent: string;
   subject: string;
+  /** The message after the subject line; '' when there's none. */
+  body: string;
   author: string;
   /** ISO 8601, author date. */
   date: string;

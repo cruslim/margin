@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clickSelection } from './Sidebar.js';
+import { clickSelection, unwrapBody } from './Sidebar.js';
 
 describe('clickSelection', () => {
   it('views a clicked commit, and goes back to All changes on a second click', () => {
@@ -16,3 +16,23 @@ describe('clickSelection', () => {
   });
 });
 
+describe('unwrapBody', () => {
+  it('rejoins a hard-wrapped paragraph', () => {
+    expect(unwrapBody('we were sending raw floats and\nreconciliation flagged them')).toBe(
+      'we were sending raw floats and reconciliation flagged them',
+    );
+  });
+
+  it('keeps paragraph breaks, list items and indented lines on their own lines', () => {
+    const body = 'Para one\ncontinues.\n\n- item one\n  wraps here\n- item two\n1. numbered\n\n    code()\n    more()';
+    expect(unwrapBody(body)).toBe(
+      'Para one continues.\n\n- item one\n  wraps here\n- item two\n1. numbered\n\n    code()\n    more()',
+    );
+  });
+
+  it('joins a list item\'s unindented continuation onto it', () => {
+    expect(unwrapBody('- leave subtotal() unrounded so\ndiscounts still compound')).toBe(
+      '- leave subtotal() unrounded so discounts still compound',
+    );
+  });
+});

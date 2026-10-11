@@ -178,6 +178,19 @@ body.resizing * { pointer-events: none; }
 .commit-row.selected .commit-subject,
 .commit-row.selected .commit-sha { color: var(--text); }
 /* The one commit being viewed: its whole message, wrapped, not one clipped line. */
+/* Wraps so the body and meta drop under the sha and get the sidebar's full width. */
+.commit-row.expanded { padding-bottom: 6px; flex-wrap: wrap; row-gap: 4px; }
+.commit-row.expanded .commit-subject { flex: 1; white-space: normal; overflow-wrap: anywhere; }
+.commit-body {
+  flex-basis: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-dim);
+  line-height: 1.45;
+  cursor: text;
+  user-select: text;
+}
+.commit-meta { flex-basis: 100%; color: var(--text-dim); font-size: 10.5px; }
 /* Fixed to the viewport so the sidebar's scroll container can't clip it. */
 .commit-tooltip {
   position: fixed;

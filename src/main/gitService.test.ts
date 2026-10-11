@@ -15,7 +15,7 @@ import {
   parseReverseBlame,
 } from './gitService.js';
 
-/** Build the exact shape `git log --format=%h%x1f%H%x1f%P%x1f%s%x1f%an%x1f%aI%x1e` emits. */
+/** Build the exact shape `git log --format=%h%x1f%H%x1f%P%x1f%s%x1f%an%x1f%aI%x1f%b%x1e` emits. */
 const log = (...commits: string[][]) =>
   commits.map((fields) => fields.join('\x1f') + '\x1e').join('\n');
 
@@ -32,6 +32,7 @@ describe('parseCommitLog', () => {
         // A merge lists both parents; the first is the line it was made on.
         parent: 'aaaa',
         subject: 'Merge pull request #12',
+        body: '',
         author: 'Chris Ruslim',
         date: '2026-07-30T11:02:03+10:00',
       },
@@ -40,6 +41,7 @@ describe('parseCommitLog', () => {
         hash: '57b2b69f',
         parent: 'cccc',
         subject: 'Specialist subagents for comment threads',
+        body: '',
         author: 'Chris Ruslim',
         date: '2026-07-30T09:40:00+10:00',
       },
@@ -59,6 +61,11 @@ describe('parseCommitLog', () => {
   it('ignores a trailing record separator', () => {
     const out = log(['abc1234', 'abc1234f', 'p', 'only commit', 'A Dev', '2026-07-30T09:00:00Z']);
     expect(parseCommitLog(out)).toHaveLength(1);
+  });
+
+  it('keeps a multi-line body whole, trimmed of git\'s trailing newline', () => {
+    const out = log(['abc1234', 'abc1234f', 'p', 'subject', 'A Dev', '2026-07-30T09:00:00Z', 'First para.\n\n- a\n- b\n']);
+    expect(parseCommitLog(out)[0].body).toBe('First para.\n\n- a\n- b');
   });
 
   it('gives a root commit an empty parent', () => {

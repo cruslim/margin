@@ -4,10 +4,10 @@ import type { MarginApi } from '../shared/ipc.js';
 const api: MarginApi = {
   pickRepo: () => ipcRenderer.invoke('repo:pick'),
   openRepo: (path) => ipcRenderer.invoke('repo:open', path),
-  changedFiles: (target) => ipcRenderer.invoke('diff:files', target),
+  changedFiles: (target, range) => ipcRenderer.invoke('diff:files', target, range),
   branchCommits: (target) => ipcRenderer.invoke('git:commits', target),
   refState: (target) => ipcRenderer.invoke('git:refState', target),
-  fileDiff: (target, path) => ipcRenderer.invoke('diff:file', target, path),
+  fileDiff: (target, path, range) => ipcRenderer.invoke('diff:file', target, path, range),
   runReview: (sessionKey, target, opts) => ipcRenderer.invoke('review:run', sessionKey, target, opts),
   onChatDelta: (cb) => {
     const listener = (_e: unknown, sessionKey: string, delta: string) => cb(sessionKey, delta);

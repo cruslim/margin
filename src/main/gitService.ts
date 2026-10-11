@@ -4,7 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { hasGeneratedMarker, isGeneratedPath } from '../shared/generated.js';
-import type { ChangedFile, CommitInfo, FileDiff, RefState, RepoInfo } from '../shared/ipc.js';
+import { EMPTY_TREE } from '../shared/ipc.js';
+import type { ChangedFile, CommitInfo, CommitRange, FileDiff, LensMap, RefState, RepoInfo } from '../shared/ipc.js';
 import type { ReviewTarget } from '../engine/types.js';
 import { effectiveBaseSha, resolveBase, untrackedFileDiff, untrackedPaths } from '../engine/worktree.js';
 
@@ -40,13 +41,26 @@ async function baseOf(target: ReviewTarget): Promise<string | null> {
   return target.headRef ? effectiveBaseSha(target.repoPath, target.baseRef, target.headRef) : null;
 }
 
-function diffArgs(target: ReviewTarget, baseSha: string | null): string[] {
+// `git show <empty tree>:path` fails, which showFile already reads as "file didn't exist".
+export { EMPTY_TREE };
+
+/**
+ * The two sides of a diff. A commit range wins outright — it's a slice of the
+ * branch, so the base doesn't come into it.
+ */
+function diffArgs(target: ReviewTarget, baseSha: string | null, range?: CommitRange): string[] {
+  if (range) return [range.from, range.to];
   return baseSha && target.headRef ? [baseSha, target.headRef] : ['HEAD'];
 }
 
-export async function changedFiles(target: ReviewTarget): Promise<ChangedFile[]> {
-  const baseSha = await baseOf(target);
-  const out = await git(target.repoPath, ['diff', '--name-status', '-z', ...diffArgs(target, baseSha)]);
+/** The base, unless a range makes it irrelevant — no point paying for resolveBase then. */
+async function baseFor(target: ReviewTarget, range?: CommitRange): Promise<string | null> {
+  return range ? null : baseOf(target);
+}
+
+export async function changedFiles(target: ReviewTarget, range?: CommitRange): Promise<ChangedFile[]> {
+  const baseSha = await baseFor(target, range);
+  const out = await git(target.repoPath, ['diff', '--name-status', '-z', ...diffArgs(target, baseSha, range)]);
   const parts = out.split('\0').filter(Boolean);
   const files: ChangedFile[] = [];
   for (let i = 0; i < parts.length; ) {
@@ -61,14 +75,14 @@ export async function changedFiles(target: ReviewTarget): Promise<ChangedFile[]>
   }
   // Working-tree reviews: `git diff` never lists untracked files — surface them as added.
   let untracked = new Set<string>();
-  if (!target.headRef) {
+  if (!target.headRef && !range) {
     untracked = new Set(await untrackedPaths(target.repoPath));
     for (const p of untracked) files.push({ path: p, status: 'A' });
     files.sort((a, b) => a.path.localeCompare(b.path));
   }
-  await addLineCounts(target, baseSha, files, untracked);
+  await addLineCounts(target, diffArgs(target, baseSha, range), files, untracked);
   // After the untracked pass, so a brand-new generated file gets flagged too.
-  await markGenerated(target, files);
+  await markGenerated(target.repoPath, range?.to ?? target.headRef, files);
   return files;
 }
 
@@ -114,11 +128,11 @@ async function untrackedNumstat(repoPath: string, path: string): Promise<{ addit
 /** Fill in additions/deletions on each file; binary files stay uncounted. */
 async function addLineCounts(
   target: ReviewTarget,
-  baseSha: string | null,
+  sides: string[],
   files: ChangedFile[],
   untracked: Set<string>,
 ): Promise<void> {
-  const stats = parseNumstat(await git(target.repoPath, ['diff', '--numstat', '-z', ...diffArgs(target, baseSha)]));
+  const stats = parseNumstat(await git(target.repoPath, ['diff', '--numstat', '-z', ...sides]));
   for (const f of files) {
     const s = stats.get(f.path);
     if (s) Object.assign(f, s);
@@ -142,7 +156,7 @@ async function addLineCounts(
 const MAX_COMMITS = 200;
 // Unit separator between fields, record separator between commits — neither can
 // appear in a commit subject, unlike newlines.
-const COMMIT_FORMAT = '%h%x1f%s%x1f%an%x1f%aI%x1e';
+const COMMIT_FORMAT = '%h%x1f%H%x1f%P%x1f%s%x1f%an%x1f%aI%x1e';
 
 /** Parse `git log --format=COMMIT_FORMAT` output. Exported for tests. */
 export function parseCommitLog(out: string): CommitInfo[] {
@@ -151,8 +165,9 @@ export function parseCommitLog(out: string): CommitInfo[] {
     .map((record) => record.replace(/^\n/, ''))
     .filter((record) => record.trim())
     .map((record) => {
-      const [sha, subject, author, date] = record.split('\x1f');
-      return { sha, subject, author, date };
+      const [sha, hash, parents, subject, author, date] = record.split('\x1f');
+      // %P lists every parent; the first is the line the commit was made on.
+      return { sha, hash, parent: parents.split(' ')[0] ?? '', subject, author, date };
     });
 }
 
@@ -214,7 +229,7 @@ const HEAD_BYTES = 4096;
  * needs the head of the new content, which is one read per file — so the sniff
  * is skipped for deleted files and for changesets too large to sniff cheaply.
  */
-async function markGenerated(target: ReviewTarget, files: ChangedFile[]): Promise<void> {
+async function markGenerated(repoPath: string, ref: string | null, files: ChangedFile[]): Promise<void> {
   const needSniff: ChangedFile[] = [];
   for (const f of files) {
     if (isGeneratedPath(f.path)) f.generated = true;
@@ -223,9 +238,9 @@ async function markGenerated(target: ReviewTarget, files: ChangedFile[]): Promis
   for (let i = 0; i < needSniff.length; i += SNIFF_CHUNK) {
     await Promise.all(
       needSniff.slice(i, i + SNIFF_CHUNK).map(async (f) => {
-        const content = target.headRef
-          ? await showFile(target.repoPath, target.headRef, f.path)
-          : await readFile(join(target.repoPath, f.path), 'utf8').catch(() => '');
+        const content = ref
+          ? await showFile(repoPath, ref, f.path)
+          : await readFile(join(repoPath, f.path), 'utf8').catch(() => '');
         if (hasGeneratedMarker(content.slice(0, HEAD_BYTES))) f.generated = true;
       }),
     );
@@ -290,14 +305,20 @@ export async function applyPatch(
   }
 }
 
-export async function fileDiff(target: ReviewTarget, path: string): Promise<FileDiff> {
+export async function fileDiff(target: ReviewTarget, path: string, range?: CommitRange): Promise<FileDiff> {
   const { repoPath, headRef } = target;
-  const baseSha = await baseOf(target);
-  let hunkText = await git(repoPath, ['diff', ...diffArgs(target, baseSha), '--', path]);
+  const baseSha = await baseFor(target, range);
+  let hunkText = await git(repoPath, ['diff', ...diffArgs(target, baseSha, range), '--', path]);
 
   let oldContent: string;
   let newContent: string;
-  if (headRef && baseSha) {
+  let lens: LensMap | undefined;
+  if (range) {
+    oldContent = await showFile(repoPath, range.from, path);
+    newContent = await showFile(repoPath, range.to, path);
+    // A range only exists for branch targets — there's a tip to map onto.
+    if (headRef) lens = await lensMap(repoPath, range.to, headRef, path, newContent);
+  } else if (headRef && baseSha) {
     oldContent = await showFile(repoPath, baseSha, path);
     newContent = await showFile(repoPath, headRef, path);
   } else {
@@ -315,5 +336,150 @@ export async function fileDiff(target: ReviewTarget, path: string): Promise<File
     newContent,
     hunks: hunkText.trim() ? [hunkText] : [],
     lang: LANG_BY_EXT[extname(path)] ?? 'plaintext',
+    ...(lens ? { lens } : {}),
   };
+}
+
+/** Lines in `content`, counted the way the diff viewer numbers them. */
+function lineCount(content: string): number {
+  if (!content) return 0;
+  return content.endsWith('\n') ? content.split('\n').length - 1 : content.split('\n').length;
+}
+
+/**
+ * Map each line of a file at one commit onto the same file at a later one,
+ * from the old-side ranges of a `git diff -U0` between them. A line inside a
+ * changed range is superseded (null); every other line shifts by what the
+ * hunks above it added and removed. Exported for tests.
+ */
+export function mapLines(diffText: string, count: number): (number | null)[] {
+  const map: (number | null)[] = [];
+  let offset = 0;
+  let next = 1; // next commit-side line to place
+  for (const m of diffText.matchAll(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm)) {
+    const oldStart = Number(m[1]);
+    const oldLen = m[2] === undefined ? 1 : Number(m[2]);
+    const newLen = m[4] === undefined ? 1 : Number(m[4]);
+    // A pure insertion's old start is the line it follows, not one it touches.
+    const firstTouched = oldLen === 0 ? oldStart + 1 : oldStart;
+    for (; next < firstTouched && next <= count; next++) map.push(next + offset);
+    for (let k = 0; k < oldLen && next <= count; k++, next++) map.push(null);
+    offset += newLen - oldLen;
+  }
+  for (; next <= count; next++) map.push(next + offset);
+  return map;
+}
+
+/**
+ * Parse `git blame --reverse --porcelain` into the last commit each line was
+ * seen in, by commit-side line. A header line is `<sha> <line there> <line
+ * here> [<group size>]`; the content and metadata lines in between never start
+ * with 40 hex characters and a space. Exported for tests.
+ */
+export function parseReverseBlame(out: string): Map<number, string> {
+  const lastSeen = new Map<number, string>();
+  for (const m of out.matchAll(/^([0-9a-f]{40}) \d+ (\d+)(?: \d+)?$/gm)) lastSeen.set(Number(m[2]), m[1]);
+  return lastSeen;
+}
+
+/**
+ * Where `path` at `from` lives at `to`: itself, a rename target, or null once
+ * deleted. Rename detection needs the whole tree in view, so this is a
+ * separate (cheap, name-only) diff from the content one.
+ */
+async function pathAt(repoPath: string, from: string, to: string, path: string): Promise<string | null> {
+  const parts = (await git(repoPath, ['diff', '-M', '--name-status', '-z', from, to])).split('\0').filter(Boolean);
+  for (let i = 0; i < parts.length; ) {
+    const status = parts[i][0];
+    if (status === 'R' || status === 'C') {
+      if (status === 'R' && parts[i + 1] === path) return parts[i + 2];
+      i += 3;
+    } else {
+      if (status === 'D' && parts[i + 1] === path) return null;
+      i += 2;
+    }
+  }
+  return path;
+}
+
+/**
+ * Line up a file at commit `at` with the branch tip — see LensMap. The mapping
+ * comes from the diff alone; blame only names who superseded each run, so a
+ * blame failure costs the "changed in" label, never the mapping.
+ */
+async function lensMap(repoPath: string, at: string, headRef: string, path: string, content: string): Promise<LensMap> {
+  const tip = (await git(repoPath, ['rev-parse', headRef])).trim();
+  const count = lineCount(content);
+  const tipPath = await pathAt(repoPath, at, tip, path);
+  if (tipPath === null) {
+    return {
+      tipPath,
+      tipContent: '',
+      tipLine: Array(count).fill(null),
+      superseded: count ? [{ start: 1, end: count, by: await firstCommitAfter(repoPath, at, tip, path) }] : [],
+    };
+  }
+  const [diffText, tipContent] = await Promise.all([
+    git(repoPath, ['diff', '-M', '-U0', '--no-color', at, tip, '--', path, tipPath]),
+    showFile(repoPath, tip, tipPath),
+  ]);
+  const tipLine = mapLines(diffText, count);
+
+  const runs: { start: number; end: number }[] = [];
+  tipLine.forEach((t, i) => {
+    if (t !== null) return;
+    const last = runs[runs.length - 1];
+    if (last && last.end === i) last.end = i + 1;
+    else runs.push({ start: i + 1, end: i + 1 });
+  });
+  if (runs.length === 0) return { tipPath, tipContent, tipLine, superseded: [] };
+
+  let lastSeen = new Map<number, string>();
+  try {
+    lastSeen = parseReverseBlame(await git(repoPath, ['blame', '--reverse', '--porcelain', `${at}..${tip}`, '--', path]));
+  } catch {
+    // blame can refuse (e.g. a path it can't follow) — runs just go unlabelled.
+  }
+  const children = new Map<string, Promise<LensMap['superseded'][number]['by']>>();
+  const superseded = await Promise.all(
+    runs.map(async (r) => {
+      // The run's first line stands for it: a run is usually one edit.
+      const seen = lastSeen.get(r.start);
+      if (!seen || seen === tip) return { ...r, by: null };
+      if (!children.has(seen)) children.set(seen, childOf(repoPath, seen, tip));
+      return { ...r, by: await children.get(seen)! };
+    }),
+  );
+  return { tipPath, tipContent, tipLine, superseded };
+}
+
+/** The commit after `sha` on its way to `tip` — the one that changed a line `sha` was the last to have. */
+async function childOf(repoPath: string, sha: string, tip: string): Promise<LensMap['superseded'][number]['by']> {
+  try {
+    const out = await git(repoPath, ['log', '--ancestry-path', '--reverse', '--format=%H%x1f%h%x1f%s', `${sha}..${tip}`]);
+    const first = out.split('\n')[0];
+    if (!first) return null;
+    const [hash, short, subject] = first.split('\x1f');
+    return { hash, sha: short, subject };
+  } catch {
+    return null;
+  }
+}
+
+/** The first commit after `at` that touched `path` — who deleted (or renamed away) a file. */
+async function firstCommitAfter(
+  repoPath: string,
+  at: string,
+  tip: string,
+  path: string,
+): Promise<LensMap['superseded'][number]['by']> {
+  try {
+    const out = await git(repoPath, ['log', '--reverse', '--format=%H%x1f%h%x1f%s', `${at}..${tip}`, '--', path]);
+    const first = out.split('\n')[0];
+    if (!first) return null;
+    const [hash, short, subject] = first.split('\x1f');
+    return { hash, sha: short, subject };
+  } catch {
+    return null;
+  }
 }

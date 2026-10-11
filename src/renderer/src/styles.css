@@ -170,8 +170,14 @@ body.resizing * { pointer-events: none; }
 }
 .commit-sha { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex-shrink: 0; }
 .commit-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-row { cursor: pointer; border-radius: 4px; }
 .commit-row:hover .commit-subject,
 .commit-row:hover .commit-sha { color: var(--text); }
+/* Viewed on its own in the diff — part of the slice the stepper names. */
+.commit-row.selected { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.commit-row.selected .commit-subject,
+.commit-row.selected .commit-sha { color: var(--text); }
+/* The one commit being viewed: its whole message, wrapped, not one clipped line. */
 /* Fixed to the viewport so the sidebar's scroll container can't clip it. */
 .commit-tooltip {
   position: fixed;
@@ -342,6 +348,19 @@ body.resizing * { pointer-events: none; }
 }
 .run-btn:disabled { opacity: 0.55; cursor: default; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
+/* Commit view: step through the branch, or back to the whole changeset. */
+.commit-stepper { display: flex; align-items: center; gap: 4px; min-width: 0; margin: 0 16px; }
+.commit-stepper .icon-btn { -webkit-app-region: no-drag; }
+.commit-stepper-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+.commit-stepper-label.active { color: var(--text); }
 /* Names the axis a select controls — a bare dropdown leaves you guessing what it sets. */
 .labelled-select { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-dim); }
 .model-select {
@@ -457,6 +476,17 @@ body.resizing * { pointer-events: none; }
 /* Keeps the gen badge beside the path instead of letting space-between spread it. */
 .diff-title { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .diff-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Says the diff is one slice of the branch, and that threads still live on its tip. */
+.lens-badge {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 .diff-body { flex: 1; min-height: 0; display: flex; position: relative; }
 .diff-scroll { flex: 1; min-width: 0; overflow: auto; user-select: text; }
 /*
@@ -567,6 +597,36 @@ col.diff-table-old-content-col { width: var(--diff-old-col, auto); }
    children (<p>, <li>, <code>…). Same-specificity counter, loaded later: */
 .line-extends *, .comment-composer * { color: inherit; }
 .comment-composer { padding: 12px 16px; background: var(--bg-panel); border-block: 1px solid var(--border); }
+/* Under code a later commit rewrote: not commentable here, and says where it went. */
+.superseded-mark {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  background: color-mix(in srgb, var(--warn) 6%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--warn) 55%, transparent);
+}
+.superseded-mark button, .lens-notice button {
+  font-style: normal;
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.lens-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg-panel);
+  border-block: 1px solid var(--border);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+}
+.lens-notice .lens-notice-text { flex: 1; }
 .comment-composer .chat-input { border-top: none; padding: 0; width: min(100%, 720px); }
 .comment-thread {
   background: var(--bg-panel);

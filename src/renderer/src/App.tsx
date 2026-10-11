@@ -14,6 +14,14 @@ import type {
   Session,
 } from '../../shared/ipc.js';
 import { reanchor } from './components/reanchor.js';
+import {
+  lensComments,
+  lensFindings,
+  rangeOf,
+  selectionSpan,
+  sinceReviewSelection,
+  type CommitSelection,
+} from './components/lens.js';
 import { answererFromSetting } from './components/answerer.js';
 import { baseLabel } from './components/baseLabel.js';
 import { findingItemId, isFindingItem } from '../../shared/findingItem.js';
@@ -33,6 +41,7 @@ import { InstructionsModal } from './components/InstructionsModal.js';
 import { DiffPane } from './components/DiffPane.js';
 import { FindingThread, ReviewPanel } from './components/ReviewPanel.js';
 import { FileList, conversationStates } from './components/FileList.js';
+import { CommitStepper } from './components/CommitStepper.js';
 import { ResizeHandle, usePanelCollapsed, usePanelWidth } from './components/Resizer.js';
 
 export type { Session };
@@ -91,6 +100,12 @@ export function App() {
    * describe the branch you just switched away from.
    */
   const [activeRefs, setActiveRefs] = useState<{ key: string; refs: RefState } | null>(null);
+  /**
+   * Commits picked in the sidebar to view on their own instead of the whole
+   * changeset. Tagged with its session for the same reason as activeRefs.
+   * Null is "All changes".
+   */
+  const [viewSel, setViewSel] = useState<(CommitSelection & { key: string }) | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   /** Bumped by the file list's conversation icon; DiffPane scrolls to the thread. */
   const [revealConvo, setRevealConvo] = useState(0);
@@ -213,24 +228,43 @@ export function App() {
     });
   }, [active?.repoPath, dismissals]);
 
-  // Load changed files when the active session changes.
+  // Commit view resets with the session — a selection is about one branch's commits.
+  useEffect(() => setViewSel(null), [activeKey]);
+  const activeSel = viewSel && viewSel.key === activeKey ? viewSel : null;
+  const viewRange = useMemo(() => rangeOf(branchCommits, activeSel), [branchCommits, activeSel]);
+  /** Value-keyed for effect deps — viewRange is a fresh object whenever the commit list is re-read. */
+  const rangeKey = viewRange ? `${viewRange.from}..${viewRange.to}` : '';
+  // A rebase or amend rewrote the viewed commits: fall back to All changes
+  // rather than show a range the branch no longer has.
   useEffect(() => {
-    setFiles([]);
-    setSelectedFile(null);
+    if (activeSel && branchCommits.length > 0 && !selectionSpan(branchCommits, activeSel)) setViewSel(null);
+  }, [branchCommits, activeSel]);
+
+  // Load changed files when the active session, or the commits viewed, change.
+  // Switching sessions starts afresh; stepping through commits keeps the open
+  // file when the new slice has it too — reading one file's history is the point.
+  const filesFor = useRef<string | null>(null);
+  useEffect(() => {
+    const sameSession = filesFor.current === activeKey;
+    filesFor.current = activeKey;
+    if (!sameSession) {
+      setFiles([]);
+      setSelectedFile(null);
+    }
     if (!active) return;
     let cancelled = false;
     window.margin
-      .changedFiles(targetOf(active))
+      .changedFiles(targetOf(active), viewRange ?? undefined)
       .then((f) => {
         if (cancelled) return;
         setFiles(f);
-        setSelectedFile(firstReadable(f));
+        setSelectedFile((prev) => (sameSession && prev && f.some((x) => x.path === prev) ? prev : firstReadable(f)));
       })
-      .catch(() => setFiles([]));
+      .catch(() => !cancelled && setFiles([]));
     return () => {
       cancelled = true;
     };
-  }, [activeKey, active?.repoPath, active?.baseRef, active?.headRef]);
+  }, [activeKey, active?.repoPath, active?.baseRef, active?.headRef, rangeKey]);
 
   // Commits on the active branch, and where its refs stand. Keyed on the same
   // things as the file list plus the refresh counter, so ↻ re-reads both along
@@ -269,13 +303,13 @@ export function App() {
     setOpenDiff(null);
     setOpenDiffError(null);
     window.margin
-      .fileDiff(targetOf(active), selectedFile)
+      .fileDiff(targetOf(active), selectedFile, viewRange ?? undefined)
       .then((d) => !cancelled && setOpenDiff(d))
       .catch((e) => !cancelled && setOpenDiffError(String(e)));
     return () => {
       cancelled = true;
     };
-  }, [active?.repoPath, active?.baseRef, active?.headRef, selectedFile, diffReloadKey]);
+  }, [active?.repoPath, active?.baseRef, active?.headRef, selectedFile, diffReloadKey, rangeKey]);
 
   /**
    * Re-read the changeset. Branch sessions diff `base...branch`, so git resolves
@@ -291,13 +325,13 @@ export function App() {
         return;
       }
       if (!active) return;
-      const f = await window.margin.changedFiles(targetOf(active)).catch(() => null);
+      const f = await window.margin.changedFiles(targetOf(active), viewRange ?? undefined).catch(() => null);
       if (!f) return; // leave the current view alone rather than blanking it
       setFiles(f);
       setSelectedFile((prev) => (prev && f.some((x) => x.path === prev) ? prev : firstReadable(f)));
       setDiffReloadKey((k) => k + 1);
     },
-    [active, activeKey],
+    [active, activeKey, viewRange],
   );
 
   /**
@@ -995,22 +1029,25 @@ export function App() {
    * idempotent instead of compounding.
    */
   const activeFindings = useMemo(() => {
-    const content = openDiff?.newContent;
-    if (!content) return storedFindings;
+    // In commit view the open diff is a past version; findings belong to the
+    // tip, which the lens carries alongside it.
+    const lens = openDiff?.lens;
+    const path = lens ? lens.tipPath : openDiff?.path;
+    const content = lens ? lens.tipContent : openDiff?.newContent;
+    if (!path || !content) return storedFindings;
     return storedFindings.map((f) => {
-      if (f.file !== openDiff.path) return f;
+      if (f.file !== path) return f;
       const at = reanchor(content, { startLine: f.line, endLine: f.line }, f.snippet);
       return at.startLine === f.line ? f : { ...f, line: at.startLine };
     });
   }, [storedFindings, openDiff]);
 
-  const fileFindings = useMemo(
-    () =>
-      activeFindings.filter(
-        (f) => f.file === selectedFile && !dismissedKeys.has(dismissalKey(f)) && f.verdict !== 'refuted',
-      ),
-    [activeFindings, selectedFile, dismissedKeys],
-  );
+  const fileFindings = useMemo(() => {
+    const lens = openDiff?.lens;
+    const visible = activeFindings.filter((f) => !dismissedKeys.has(dismissalKey(f)) && f.verdict !== 'refuted');
+    if (lens) return lensFindings(visible, lens);
+    return visible.filter((f) => f.file === selectedFile);
+  }, [activeFindings, selectedFile, dismissedKeys, openDiff]);
   const flaggedFiles = useMemo(() => new Set(activeFindings.map((f) => f.file)), [activeFindings]);
 
   // Export the review as Markdown via the OS save dialog, filtered exactly like
@@ -1036,6 +1073,7 @@ export function App() {
 
   /** Comment threads for the open file, re-anchored the same way. */
   const fileComments = useMemo(() => {
+    if (openDiff?.lens) return lensComments(active?.comments ?? [], openDiff.lens);
     const mine = (active?.comments ?? []).filter((c) => c.file === selectedFile);
     if (!openDiff) return mine;
     return mine.map((c) => {
@@ -1122,6 +1160,22 @@ export function App() {
   const activeScope = active ? chatScope[active.key] : undefined;
   const activeStream = active ? streamText[active.key] ?? '' : '';
   const deltaAvailable = !!(active?.lastReviewedSha && active.headRef && active.status === 'done');
+  const sinceReview = useMemo(
+    () => sinceReviewSelection(branchCommits, active?.lastReviewedSha),
+    [branchCommits, active?.lastReviewedSha],
+  );
+  const selectCommits = useCallback(
+    (sel: CommitSelection | null) => setViewSel(sel && activeKey ? { ...sel, key: activeKey } : null),
+    [activeKey],
+  );
+  /** What the diff toolbar calls the slice on show — the stepper says it at more length. */
+  const lensLabel = useMemo(() => {
+    const span = selectionSpan(branchCommits, activeSel);
+    if (!span) return undefined;
+    return span.newest === span.oldest
+      ? branchCommits[span.newest].sha
+      : `${branchCommits[span.oldest].sha}…${branchCommits[span.newest].sha}`;
+  }, [branchCommits, activeSel]);
 
   if (booting) {
     return (
@@ -1159,6 +1213,14 @@ export function App() {
               )}
             </span>
           </div>
+          {active.headRef && (
+            <CommitStepper
+              commits={branchCommits}
+              selection={activeSel}
+              sinceReview={sinceReview}
+              onSelect={selectCommits}
+            />
+          )}
           <div className="topbar-actions">
             <label className="labelled-select">
               model
@@ -1224,6 +1286,8 @@ export function App() {
         onDeleteSession={deleteSession}
         onRefreshSession={refreshSession}
         activeCommits={branchCommits}
+        commitSelection={activeSel}
+        onSelectCommits={selectCommits}
         activeRefs={activeRefs?.key === activeKey ? activeRefs.refs : undefined}
         onRemoveRepo={removeRepo}
         onRefreshRepo={refreshRepo}
@@ -1266,6 +1330,8 @@ export function App() {
                   reloadKey={diffReloadKey}
                   revealConvo={revealConvo}
                   generated={files.find((f) => f.path === selectedFile)?.generated}
+                  lensLabel={viewRange ? lensLabel : undefined}
+                  onJumpToCommit={(hash) => selectCommits({ anchor: hash, end: hash })}
                   findings={fileFindings}
                   comments={fileComments}
                   agents={agentNames}

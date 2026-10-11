@@ -4,6 +4,18 @@ import type { CommitInfo, RefState, RepoInfo } from '../../../shared/ipc.js';
 import type { Session } from '../App.js';
 import { sessionTitle } from '../App.js';
 import { baseLabel } from './baseLabel.js';
+import { selectionSpan, type CommitSelection } from './lens.js';
+
+/**
+ * The selection a click on commit row `hash` makes. A plain click views that
+ * commit, or goes back to All changes when it's already the only one viewed;
+ * shift-click stretches the selection from where it was started. Exported for tests.
+ */
+export function clickSelection(sel: CommitSelection | null, hash: string, shift: boolean): CommitSelection | null {
+  if (shift && sel) return { anchor: sel.anchor, end: hash };
+  if (sel && sel.anchor === hash && sel.end === hash) return null;
+  return { anchor: hash, end: hash };
+}
 
 // The ⚙ text glyph renders undersized next to ＋/↻ — a real SVG keeps the set consistent.
 const GearIcon = (
@@ -46,6 +58,9 @@ export function Sidebar(props: {
   onRefreshSession: (key: string) => Promise<void>;
   /** Commits on the selected branch, listed under its row. */
   activeCommits: CommitInfo[];
+  /** Commits being viewed on their own; null is All changes. */
+  commitSelection: CommitSelection | null;
+  onSelectCommits: (sel: CommitSelection | null) => void;
   /** Where the selected session's refs stand, for naming the base it's really against. */
   activeRefs?: RefState;
   onRemoveRepo: (path: string) => void;
@@ -188,7 +203,13 @@ export function Sidebar(props: {
                   </button>
                 </div>
                 {s.key === props.activeKey && s.headRef && (
-                  <CommitList commits={props.activeCommits} baseRef={s.baseRef} refs={props.activeRefs} />
+                  <CommitList
+                    commits={props.activeCommits}
+                    baseRef={s.baseRef}
+                    refs={props.activeRefs}
+                    selection={props.commitSelection}
+                    onSelect={props.onSelectCommits}
+                  />
                 )}
                 </Fragment>
               ))}
@@ -203,10 +224,18 @@ export function Sidebar(props: {
 }
 
 /**
- * Commits on the selected branch. Read-only orientation — the sidebar is narrow,
- * so each row is sha + subject and the full detail goes in the tooltip.
+ * Commits on the selected branch. The sidebar is narrow, so each row is sha +
+ * subject and the full detail goes in the tooltip. Clicking a row views just
+ * that commit's changes; shift-click views a span.
  */
-function CommitList(props: { commits: CommitInfo[]; baseRef: string; refs?: RefState }) {
+function CommitList(props: {
+  commits: CommitInfo[];
+  baseRef: string;
+  refs?: RefState;
+  selection: CommitSelection | null;
+  onSelect: (sel: CommitSelection | null) => void;
+}) {
+  const span = selectionSpan(props.commits, props.selection);
   // Own hover card rather than `title`: the native tooltip waits a second or
   // more, and it's the truncated subject people need to read straight away.
   const [hover, setHover] = useState<{ commit: CommitInfo; top: number; left: number } | null>(null);
@@ -232,10 +261,15 @@ function CommitList(props: { commits: CommitInfo[]; baseRef: string; refs?: RefS
     <Fragment>
       {note}
       <div className="commit-list">
-        {props.commits.map((c) => (
+        {props.commits.map((c, i) => (
           <div
             key={c.sha}
-            className="commit-row"
+            className={`commit-row ${span && i >= span.newest && i <= span.oldest ? 'selected' : ''}`}
+            onMouseDown={(e) => {
+              // Shift-click would otherwise select the sidebar's text.
+              if (e.shiftKey) e.preventDefault();
+            }}
+            onClick={(e) => props.onSelect(clickSelection(props.selection, c.hash, e.shiftKey))}
             onMouseEnter={(e) => setHover({ commit: c, ...tooltipPosition(e.clientX, e.clientY) })}
             onMouseLeave={() => setHover((h) => (h?.commit.sha === c.sha ? null : h))}
           >

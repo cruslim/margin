@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { DiffViewWithMultiSelect, DiffModeEnum, SplitSide } from '@git-diff-view/react';
 import type { DiffViewWithMultiSelectRef } from '@git-diff-view/react';
-import type { Comment, FileDiff, Finding, ReviewTarget } from '../../../shared/ipc.js';
+import type { Comment, FileDiff, Finding, LensMap, ReviewTarget } from '../../../shared/ipc.js';
 import type { ChatScope } from '../App.js';
 import { dismissalKey } from '../App.js';
 import { GenBadge } from './FileList.js';
@@ -9,6 +9,32 @@ import { ChatBubble, ChatInput, StreamingBubble } from './ChatParts.js';
 import { agentValue, answererOf, ANSWER_EXTERNAL } from './answerer.js';
 import { CopyPromptButton } from './CopyPrompt.js';
 import { useSplitFraction } from './Resizer.js';
+import { tipSpan } from './lens.js';
+
+type Superseder = LensMap['superseded'][number]['by'];
+
+/**
+ * Where a new comment on these lines would be kept. Outside commit view that's
+ * just where it was made. In commit view it's translated onto the branch tip,
+ * and refused when it can't be: removed lines (the old side is the commit's
+ * parent, not the base threads are anchored to) and code a later commit rewrote.
+ */
+export type CommentTarget =
+  | { ok: true; file: string; startLine: number; endLine: number }
+  | { ok: false; reason: 'old' | 'superseded'; by: Superseder };
+
+export function commentTarget(
+  lens: LensMap | undefined,
+  path: string,
+  side: 'old' | 'new',
+  startLine: number,
+  endLine: number,
+): CommentTarget {
+  if (!lens) return { ok: true, file: path, startLine, endLine };
+  if (side === 'old') return { ok: false, reason: 'old', by: null };
+  const at = tipSpan(lens, startLine, endLine);
+  return at.ok ? at : { ok: false, reason: 'superseded', by: at.by };
+}
 
 const MODE_KEY = 'margin.diffMode';
 
@@ -65,6 +91,8 @@ export function splitGeometry(geom: { gutter: number; width: number }, fraction:
 }
 
 interface LineExtend {
+  /** Last line of a run a later commit rewrote — commit view only. */
+  superseded?: LensMap['superseded'][number];
   finding?: Finding;
   comments: Comment[];
   /** The drag-selection composer belongs on this line — the last line selected. */
@@ -76,6 +104,10 @@ export function DiffPane(props: {
   path: string;
   /** File is auto-generated — flagged in the toolbar. */
   generated?: boolean;
+  /** Set in commit view: names the slice shown (e.g. `a1b2c3`), flagged in the toolbar. */
+  lensLabel?: string;
+  /** Switch commit view to this commit — where superseded code went. */
+  onJumpToCommit: (hash: string) => void;
   /** Fetched by App, whose content also anchors the findings panel. */
   diff: FileDiff | null;
   error?: string | null;
@@ -126,6 +158,7 @@ export function DiffPane(props: {
   onApplyPatch: (patch: string, commentId: string) => void;
 }) {
   const { diff, error } = props;
+  const lens = diff?.lens;
   const [mode, setMode] = useState<DiffModeEnum>(() =>
     localStorage.getItem(MODE_KEY) === 'unified' ? DiffModeEnum.Unified : DiffModeEnum.SplitGitHub,
   );
@@ -323,18 +356,50 @@ export function DiffPane(props: {
       bucket[line] ??= { data: { comments: [] } };
       return bucket[line].data;
     };
+    for (const r of lens?.superseded ?? []) at('new', r.end).superseded = r;
     for (const f of props.findings) at('new', f.line).finding = f;
     for (const c of props.comments) at(c.side, c.endLine).comments.push(c);
     // Anchored to the end of the selection, so the composer opens under the lines
     // it is about — like the single-line `+` composer, and like the thread it becomes.
     if (pendingRange) at(pendingRange.side, pendingRange.end).composer = true;
     return { oldFile, newFile };
-  }, [props.findings, props.comments, pendingRange]);
+  }, [props.findings, props.comments, pendingRange, lens]);
 
   const quotedLines = (side: SplitSide, startLine: number, endLine: number): string => {
     const content = side === SplitSide.old ? diff?.oldContent : diff?.newContent;
     return content?.split('\n').slice(startLine - 1, endLine).join('\n') ?? '';
   };
+
+  const targetFor = (side: 'old' | 'new', startLine: number, endLine: number) =>
+    commentTarget(lens, props.path, side, startLine, endLine);
+
+  /**
+   * Add a comment made on these (displayed) lines, kept wherever targetFor says.
+   * The quote is taken from the lines as shown — in commit view they're the
+   * same text the tip has, or targetFor would have refused them.
+   */
+  const addComment = (
+    side: 'old' | 'new',
+    startLine: number,
+    endLine: number,
+    text: string,
+    answerer: { agent?: string; external?: boolean },
+  ): boolean => {
+    const at = targetFor(side, startLine, endLine);
+    if (!at.ok) return false;
+    props.onAddComment(
+      at.file,
+      side,
+      at.startLine,
+      at.endLine,
+      quotedLines(side === 'old' ? SplitSide.old : SplitSide.new, startLine, endLine),
+      text,
+      answerer,
+    );
+    return true;
+  };
+
+  const pendingTarget = pendingRange ? targetFor(pendingRange.side, pendingRange.start, pendingRange.end) : null;
 
   if (error) return <div className="empty-note">{error}</div>;
   if (!diff) return <div className="empty-note">Loading diff…</div>;
@@ -350,6 +415,14 @@ export function DiffPane(props: {
         <span className="diff-title">
           <span className="diff-path">{diff.path}</span>
           {props.generated && <GenBadge />}
+          {props.lensLabel && (
+            <span
+              className="lens-badge"
+              title="Viewing part of the branch's history. Comments and findings stay with the branch tip, so code a later commit rewrote can't take new comments here."
+            >
+              {props.lensLabel}
+            </span>
+          )}
         </span>
         {/* Which view you're in, not what the button does — the old single
             button was labelled with its action and read as the current mode. */}
@@ -419,6 +492,12 @@ export function DiffPane(props: {
           renderWidgetLine={({ side, lineNumber, fromLineNumber, onClose }) => {
             const from = Math.min(fromLineNumber || lineNumber, lineNumber);
             const to = Math.max(fromLineNumber || lineNumber, lineNumber);
+            const sideName = side === SplitSide.old ? 'old' : 'new';
+            // The `+` can't be hidden per line, so a refusal opens in its place.
+            const at = targetFor(sideName, from, to);
+            if (!at.ok) {
+              return <LensNotice target={at} onJump={props.onJumpToCommit} onClose={onClose} />;
+            }
             return (
               <CommentComposer
                 busy={props.busy}
@@ -439,16 +518,15 @@ export function DiffPane(props: {
                   onClose();
                 }}
                 onSend={(startLine, text, answerer) => {
+                  // The composer lets the start line be moved up, possibly onto
+                  // code that's gone at the tip — so it's checked again here.
+                  if (!addComment(sideName, startLine, to, text, answerer)) {
+                    window.alert(
+                      'Some of those lines are changed by a later commit, so the comment has nowhere to live on the branch tip. Start it on a line further down.',
+                    );
+                    return;
+                  }
                   widget.current = { draft: '', answerer: null, startLine: null };
-                  props.onAddComment(
-                    props.path,
-                    side === SplitSide.old ? 'old' : 'new',
-                    startLine,
-                    to,
-                    quotedLines(side, startLine, to),
-                    text,
-                    answerer,
-                  );
                   onClose();
                 }}
               />
@@ -458,7 +536,13 @@ export function DiffPane(props: {
           renderExtendLine={({ data }) =>
             data ? (
               <div className="line-extends">
-                {data.composer && pendingRange && (
+                {data.superseded && (
+                  <SupersededMark by={data.superseded.by} onJump={props.onJumpToCommit} />
+                )}
+                {data.composer && pendingTarget && !pendingTarget.ok && (
+                  <LensNotice target={pendingTarget} onJump={props.onJumpToCommit} onClose={clearRange} />
+                )}
+                {data.composer && pendingRange && pendingTarget?.ok && (
                   <RangeComposer
                     busy={props.busy}
                     agents={props.agents}
@@ -472,19 +556,7 @@ export function DiffPane(props: {
                     }}
                     onCancel={clearRange}
                     onSend={(text, answerer) => {
-                      props.onAddComment(
-                        props.path,
-                        pendingRange.side,
-                        pendingRange.start,
-                        pendingRange.end,
-                        quotedLines(
-                          pendingRange.side === 'old' ? SplitSide.old : SplitSide.new,
-                          pendingRange.start,
-                          pendingRange.end,
-                        ),
-                        text,
-                        answerer,
-                      );
+                      addComment(pendingRange.side, pendingRange.start, pendingRange.end, text, answerer);
                       clearRange();
                     }}
                   />
@@ -515,6 +587,59 @@ export function DiffPane(props: {
         />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Marks code a later commit rewrote, under its last line, with a way to go see the rewrite. */
+function SupersededMark(props: { by: Superseder; onJump: (hash: string) => void }) {
+  const { by } = props;
+  return (
+    <div className="superseded-mark">
+      {by ? (
+        <>
+          changed later in
+          <button title={`View ${by.sha}: ${by.subject}`} onClick={() => props.onJump(by.hash)}>
+            {by.sha} →
+          </button>
+          <span className="diff-path">{by.subject}</span>
+        </>
+      ) : (
+        'changed by a later commit'
+      )}
+    </div>
+  );
+}
+
+/** Opens where a composer would, when the lines picked can't take a comment in commit view. */
+function LensNotice(props: {
+  target: CommentTarget & { ok: false };
+  onJump: (hash: string) => void;
+  onClose: () => void;
+}) {
+  const { reason, by } = props.target;
+  const text =
+    reason === 'old'
+      ? 'Removed lines can only be commented on in All changes: comments stay with the branch tip, and this side is the commit’s parent.'
+      : by
+        ? `This code changes in ${by.sha} (${by.subject}), so it isn’t on the branch tip any more. Comment on it where it ended up.`
+        : 'These lines aren’t on the branch tip as they are here any more: a later commit changed them.';
+  return (
+    <div className="lens-notice">
+      <span className="lens-notice-text">{text}</span>
+      {reason === 'superseded' && by && (
+        <button
+          onClick={() => {
+            props.onClose();
+            props.onJump(by.hash);
+          }}
+        >
+          go to {by.sha} →
+        </button>
+      )}
+      <button className="cancel-btn small" onClick={props.onClose}>
+        OK
+      </button>
     </div>
   );
 }

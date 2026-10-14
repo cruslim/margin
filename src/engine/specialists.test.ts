@@ -37,6 +37,12 @@ describe('specialistPrompt', () => {
     expect(prompt).toContain('diff body');
   });
 
+  it('puts the repo conventions ahead of the diff', () => {
+    const prompt = specialistPrompt([], 'diff body', {}, '', '--- CLAUDE.md ---\nMax 10 deps.');
+    expect(prompt).toContain('Max 10 deps.');
+    expect(prompt.indexOf('Max 10 deps.')).toBeLessThan(prompt.indexOf('diff body'));
+  });
+
   it('omits the rubric section when there are no checks', () => {
     const prompt = specialistPrompt([], 'diff body', {}, '');
     expect(prompt).not.toContain('Work through this rubric');

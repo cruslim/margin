@@ -1,6 +1,6 @@
 import { query, type AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import { delegationPrompt } from './agents.js';
-import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
+import { conventionsPreamble, mergeInstructions, readRepoConventions, readRepoInstructionsFile } from './instructions.js';
 
 export interface ChatReply {
   sessionId: string;
@@ -26,10 +26,12 @@ export interface ChatOptions {
 
 const FRESH_SESSION_PROMPT = `You are Margin, a code review assistant. You are answering questions about a changeset inside a checkout of the repository. Explore with Read/Grep/Glob to ground your answers in the actual code. Be concise and concrete.`;
 
-/** System prompt for a fresh (non-resumed) session, with project instructions appended when present. */
-export function freshSessionPrompt(projectInstructions: string): string {
-  if (!projectInstructions.trim()) return FRESH_SESSION_PROMPT;
-  return `${FRESH_SESSION_PROMPT}\n\nProject-specific instructions (follow these):\n${projectInstructions.trim()}`;
+/** System prompt for a fresh (non-resumed) session, with the repo's conventions and project instructions appended when present. */
+export function freshSessionPrompt(projectInstructions: string, conventions = ''): string {
+  let prompt = FRESH_SESSION_PROMPT;
+  if (conventions.trim()) prompt += `\n\n${conventionsPreamble(conventions).trim()}`;
+  if (projectInstructions.trim()) prompt += `\n\nProject-specific instructions (follow these):\n${projectInstructions.trim()}`;
+  return prompt;
 }
 
 /**
@@ -53,6 +55,7 @@ export async function chat(
   const projectInstructions = sessionId
     ? ''
     : mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
+  const conventions = sessionId ? '' : await readRepoConventions(workDir);
 
   // Subagents (and the Task tool that spawns them) are only exposed on turns
   // that explicitly target an agent, so plain turns stay deterministic. A
@@ -66,15 +69,16 @@ export async function chat(
   const stream = query({
     prompt: delegate ? delegationPrompt(delegate, message) : message,
     options: {
-      ...(sessionId ? { resume: sessionId } : { systemPrompt: freshSessionPrompt(projectInstructions) }),
+      ...(sessionId ? { resume: sessionId } : { systemPrompt: freshSessionPrompt(projectInstructions, conventions) }),
       ...(delegate ? { agents: opts.agents } : {}),
       cwd: workDir,
+      // User settings only — see review.ts.
+      settingSources: ['user'],
       allowedTools: delegate ? ['Read', 'Grep', 'Glob', 'Task'] : ['Read', 'Grep', 'Glob'],
       disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'],
       maxTurns: 30,
       ...(opts.model ? { model: opts.model } : {}),
       ...(events.onTextDelta ? { includePartialMessages: true } : {}),
-      ...(process.versions.electron ? { executable: 'node' as const } : {}),
       ...(process.env.MARGIN_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.MARGIN_CLI_PATH } : {}),
     },
   });

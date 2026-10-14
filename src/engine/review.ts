@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { generatedFilesNote } from '../shared/generated.js';
-import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
+import { conventionsPreamble, mergeInstructions, readRepoConventions, readRepoInstructionsFile } from './instructions.js';
 import type { Finding, ReviewOptions, ReviewResult, ReviewTarget, TokenUsage } from './types.js';
 import { branchDiff, createWorktree, resolveSha, usableSinceSha, workingTreeDiff } from './worktree.js';
 
@@ -14,11 +14,18 @@ const SYSTEM_PROMPT = `You are Margin, a code reviewer. You review a diff inside
 Rules:
 - Only report defects a reviewer would block a merge for: incorrect behaviour, security issues, data loss, unhandled errors, real performance problems. No style nits, no subjective preferences.
 - Before reporting a finding, verify it: read the surrounding file, grep for callers or existing guards that might already handle the case. Discard anything the codebase already accounts for.
+- Follow every value the change newly takes from outside the program — a URL or query parameter, a request body, header or cookie, storage, a file, the environment — to each place it is consumed, across language and process boundaries (a client parameter into the server resolver and query behind it). Ask what an unexpected, extreme or hostile value does there.
+- Code the diff did not touch is in scope when the change makes it newly reachable, or reachable with such a value. "Pre-existing" only excuses a problem the change neither exposes nor worsens.
 - Every finding must name a concrete failure scenario: what input or state triggers it and what goes wrong.
 - Findings must anchor to a line in the NEW version of a changed file, and include the exact source snippet at that line.`;
 
-function reviewPrompt(diff: string, opts: ReviewOptions, projectInstructions: string): string {
-  let preamble = '';
+export function reviewPrompt(
+  diff: string,
+  opts: ReviewOptions,
+  projectInstructions: string,
+  conventions = '',
+): string {
+  let preamble = conventionsPreamble(conventions);
   if (opts.sinceSha) {
     preamble +=
       'This is an INCREMENTAL review: the diff below contains only changes made since your previous review of this branch. Review just these new changes.\n\n';
@@ -99,6 +106,7 @@ export async function runReview(
   }
 
   const projectInstructions = mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
+  const conventions = await readRepoConventions(workDir);
 
   let sessionId = '';
   let resultText = '';
@@ -113,17 +121,20 @@ export async function runReview(
   model = '';
   usage = null;
   const stream = query({
-    prompt: reviewPrompt(diff, opts, projectInstructions),
+    prompt: reviewPrompt(diff, opts, projectInstructions, conventions),
     options: {
       cwd: workDir,
+      // The user's own Claude Code settings apply (default model, env), so a
+      // review runs on the same model the CLI would. The reviewed repo's
+      // .claude/settings.json is deliberately not loaded: it can carry hooks,
+      // and a review must not run code from the branch under review.
+      settingSources: ['user'],
       systemPrompt: SYSTEM_PROMPT,
       allowedTools: READ_ONLY_TOOLS,
       disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'],
       maxTurns: 60,
       ...(opts.model ? { model: opts.model } : {}),
-      // Inside Electron, process.execPath is Electron itself — force plain node for the CLI child.
-      ...(process.versions.electron ? { executable: 'node' as const } : {}),
-      // Packaged app: the SDK's own cli.js path resolves inside the asar; use the unpacked copy.
+      // Packaged app: the SDK's bundled CLI binary sits inside the asar; use the unpacked copy.
       ...(process.env.MARGIN_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.MARGIN_CLI_PATH } : {}),
     },
   });

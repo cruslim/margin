@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseReviewOutput, TRANSIENT_API_ERROR } from './review.js';
+import { parseReviewOutput, reviewPrompt, TRANSIENT_API_ERROR } from './review.js';
 
 const finding = {
   file: 'src/a.ts',
@@ -56,5 +56,19 @@ describe('TRANSIENT_API_ERROR', () => {
     expect(TRANSIENT_API_ERROR.test('No new changes since the last review.')).toBe(false);
     expect(TRANSIENT_API_ERROR.test('API Error: 401 authentication_error')).toBe(false);
     expect(TRANSIENT_API_ERROR.test('Diff is empty — nothing to review.')).toBe(false);
+  });
+});
+
+describe('reviewPrompt', () => {
+  it('leads with the repo conventions when there are any, ahead of the diff', () => {
+    const prompt = reviewPrompt('diff body', {}, 'Use tabs.', '--- CLAUDE.md ---\nMax 10 deps.');
+    expect(prompt.indexOf('Max 10 deps.')).toBeLessThan(prompt.indexOf('Use tabs.'));
+    expect(prompt.indexOf('Use tabs.')).toBeLessThan(prompt.indexOf('diff body'));
+  });
+
+  it('carries no conventions block when the repo has none', () => {
+    const prompt = reviewPrompt('diff body', {}, '');
+    expect(prompt).not.toContain('CLAUDE.md');
+    expect(prompt).toContain('diff body');
   });
 });

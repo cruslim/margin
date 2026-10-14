@@ -16,6 +16,15 @@ describe('freshSessionPrompt', () => {
   });
 });
 
+describe('freshSessionPrompt with repo conventions', () => {
+  it('puts the conventions before the project instructions', () => {
+    const prompt = freshSessionPrompt('- integer cents', '--- CLAUDE.md ---\nMax 10 deps.');
+    expect(prompt).toContain('Max 10 deps.');
+    expect(prompt.indexOf('Max 10 deps.')).toBeLessThan(prompt.indexOf('- integer cents'));
+    expect(prompt.endsWith('integer cents')).toBe(true);
+  });
+});
+
 describe('chat with a specialist agent', () => {
   it('rejects a turn targeting an agent that is not configured', async () => {
     // Throws before any process is spawned — a deleted agent must not silently

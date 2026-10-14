@@ -20,16 +20,31 @@ interface CrEvent {
   metadata?: { waitTime?: string };
 }
 
+/**
+ * The CLI has shipped two shapes of instruction text. Older builds embed the
+ * anchor mid-sentence ("In @util.js around lines 26 - 31, handle…") after a
+ * fixed verification preamble ending in a blank line. Newer builds lead with a
+ * header line ("Review comment at @util.js at line 26:") and the instruction
+ * on the next line. Either way the finding needs the line and the instruction
+ * without the header, or it lands on line 1 with the header as its summary.
+ */
+export function parseCrInstructions(text: string): { line: number; body: string } {
+  let body = text.includes('\n\n') ? text.slice(text.indexOf('\n\n') + 2) : text;
+  const header = body.match(/^Review comment at @?\S+ at lines?\s+(\d+)[^\n]*:\s*\n?/i);
+  if (header) {
+    return { line: Number(header[1]), body: body.slice(header[0].length).trim() };
+  }
+  body = body.trim();
+  const inline = body.match(/(?:around|at) lines?\s+(\d+)/i);
+  return { line: inline ? Number(inline[1]) : 1, body };
+}
+
 function parseCrFinding(e: CrEvent): Finding {
-  // The instruction text embeds the anchor as "around lines 26 - 31" and
-  // starts with a fixed verification preamble ending in a blank line.
-  const text = e.codegenInstructions ?? '';
-  const body = text.includes('\n\n') ? text.slice(text.indexOf('\n\n') + 2) : text;
-  const lineMatch = body.match(/around lines?\s+(\d+)/i);
+  const { line, body } = parseCrInstructions(e.codegenInstructions ?? '');
   const firstSentence = body.match(/^[\s\S]*?[.!?](?:\s|$)/)?.[0]?.trim();
   return {
     file: e.fileName ?? '',
-    line: lineMatch ? Number(lineMatch[1]) : 1,
+    line,
     severity: SEVERITY[e.severity ?? ''] ?? 'medium',
     category: 'other',
     summary: firstSentence && firstSentence.length <= 220 ? firstSentence : body.slice(0, 200),

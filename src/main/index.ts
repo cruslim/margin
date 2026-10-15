@@ -101,16 +101,18 @@ ensureNodeOnPath();
   }
 }
 
-// The SDK spawns its CLI with child_process.spawn, which Electron does NOT
-// patch for asar — hand it the real unpacked path.
+// The SDK ships the Claude Code CLI as a native binary in a per-platform
+// package and spawns it with child_process.spawn, which Electron does NOT
+// patch for asar — hand it the real unpacked path (see asarUnpack in
+// package.json, which keeps those packages out of the archive).
 if (app.isPackaged) {
   process.env.MARGIN_CLI_PATH = join(
     process.resourcesPath,
     'app.asar.unpacked',
     'node_modules',
     '@anthropic-ai',
-    'claude-agent-sdk',
-    'cli.js',
+    `claude-agent-sdk-${process.platform}-${process.arch}`,
+    process.platform === 'win32' ? 'claude.exe' : 'claude',
   );
 }
 

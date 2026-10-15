@@ -67,12 +67,13 @@ Include a verdict for every finding.`;
       prompt,
       options: {
         cwd: workDir,
+        // User settings only — see review.ts.
+        settingSources: ['user'],
         systemPrompt: SYSTEM_PROMPT,
         allowedTools: ['Read', 'Grep', 'Glob'],
         disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'],
         maxTurns: 60,
         ...(opts.model ? { model: opts.model } : {}),
-        ...(process.versions.electron ? { executable: 'node' as const } : {}),
         ...(process.env.MARGIN_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.MARGIN_CLI_PATH } : {}),
       },
     });

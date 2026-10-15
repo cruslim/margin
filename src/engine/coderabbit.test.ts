@@ -1,6 +1,6 @@
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { runCodeRabbitReview } from './coderabbit.js';
+import { parseCrInstructions, runCodeRabbitReview } from './coderabbit.js';
 
 // headRef null → runs in repoPath directly, no worktree needed.
 const target = { repoPath: tmpdir(), baseRef: 'main', headRef: null };
@@ -36,6 +36,31 @@ describe('coderabbit inactivity watchdog', () => {
         spawnOverride: { command: '/bin/sh', args: ['-c', 'echo boom >&2; exit 3'] },
       }),
     ).rejects.toThrow(/exited 3: boom/);
+  });
+});
+
+describe('parseCrInstructions', () => {
+  it('reads the inline "around lines" anchor after the verification preamble', () => {
+    expect(parseCrInstructions('Verify this first.\n\nIn @util.js around lines 4 - 6, handle undefined.')).toEqual({
+      line: 4,
+      body: 'In @util.js around lines 4 - 6, handle undefined.',
+    });
+  });
+
+  it('reads the newer "Review comment at … at line N:" header and drops it from the body', () => {
+    // The shape the CLI emits now: a header line, then the instruction. Before
+    // this was handled the finding landed on line 1 with the header as its summary.
+    const text =
+      'Review comment at @assets/src/lib/url.ts at line 33:\nUpdate the parser to reject page numbers above 2147483647.';
+    expect(parseCrInstructions(text)).toEqual({
+      line: 33,
+      body: 'Update the parser to reject page numbers above 2147483647.',
+    });
+    expect(parseCrInstructions('Review comment at @a.ts at lines 7 - 9:\nFix it.')).toEqual({ line: 7, body: 'Fix it.' });
+  });
+
+  it('falls back to line 1 with the whole text when no anchor is present', () => {
+    expect(parseCrInstructions('Just a note.')).toEqual({ line: 1, body: 'Just a note.' });
   });
 });
 

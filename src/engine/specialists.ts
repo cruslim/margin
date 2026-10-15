@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { generatedFilesNote } from '../shared/generated.js';
-import { mergeInstructions, readRepoInstructionsFile } from './instructions.js';
+import { conventionsPreamble, mergeInstructions, readRepoConventions, readRepoInstructionsFile } from './instructions.js';
 import type { AgentConfig } from './agents.js';
 import type { Finding, ReviewOptions, ReviewTarget, RubricCheckResult, SpecialistReport } from './types.js';
 import { scanForJson, summarizeInput, TRANSIENT_API_ERROR } from './review.js';
@@ -27,6 +27,8 @@ Rules:
 - First decide whether this changeset touches your specialty at all. If it does not, say so and stop — do not stretch your lens over unrelated code.
 - Only report defects a reviewer would block a merge for. No style nits, no subjective preferences.
 - Before reporting a finding, verify it: read the surrounding file, grep for callers or existing guards that might already handle the case. Discard anything the codebase already accounts for.
+- Follow every value the change newly takes from outside the program — a URL or query parameter, a request body, header or cookie, storage, a file, the environment — to each place it is consumed, across language and process boundaries. Ask what an unexpected, extreme or hostile value does there.
+- Code the diff did not touch is in scope when the change makes it newly reachable, or reachable with such a value. "Pre-existing" only excuses a problem the change neither exposes nor worsens.
 - Every finding must name a concrete failure scenario: what input or state triggers it and what goes wrong.
 - Findings must anchor to a line in the NEW version of a changed file, and include the exact source snippet at that line.
 - For every rubric check, ground your note in what you actually read — name the mechanism, not a restatement of the check.`;
@@ -37,8 +39,9 @@ export function specialistPrompt(
   diff: string,
   opts: ReviewOptions,
   projectInstructions: string,
+  conventions = '',
 ): string {
-  let preamble = '';
+  let preamble = conventionsPreamble(conventions);
   if (opts.sinceSha) {
     preamble +=
       'This is an INCREMENTAL review: the diff below contains only changes made since the previous review of this branch. Review just these new changes.\n\n';
@@ -174,6 +177,7 @@ export async function runSpecialistReview(
     }
 
     const projectInstructions = mergeInstructions(opts.instructions, await readRepoInstructionsFile(workDir));
+    const conventions = await readRepoConventions(workDir);
     const checks = rubricChecks(agent.rubric);
     // The specialist's own model tier wins over the session choice, matching
     // how these agents behave when delegated a comment thread.
@@ -186,17 +190,17 @@ export async function runSpecialistReview(
       resultText = '';
       costUsd = null;
       const stream = query({
-        prompt: specialistPrompt(checks, diff, { ...opts, sinceSha }, projectInstructions),
+        prompt: specialistPrompt(checks, diff, { ...opts, sinceSha }, projectInstructions, conventions),
         options: {
           cwd: workDir,
+          // User settings only — see review.ts.
+          settingSources: ['user'],
           systemPrompt: specialistSystemPrompt(agent),
           allowedTools: READ_ONLY_TOOLS,
           disallowedTools: ['Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'],
           maxTurns: 40,
           ...(model ? { model } : {}),
-          // Inside Electron, process.execPath is Electron itself — force plain node for the CLI child.
-          ...(process.versions.electron ? { executable: 'node' as const } : {}),
-          // Packaged app: the SDK's own cli.js path resolves inside the asar; use the unpacked copy.
+          // Packaged app: the SDK's bundled CLI binary sits inside the asar; use the unpacked copy.
           ...(process.env.MARGIN_CLI_PATH ? { pathToClaudeCodeExecutable: process.env.MARGIN_CLI_PATH } : {}),
         },
       });

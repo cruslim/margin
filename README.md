@@ -18,6 +18,8 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 - **Dismissal memory** — dismissed findings are hidden and never re-reported (per-repo `dismissals.json`, restorable)
 - **Generated files stay out of the way** — lockfiles, build output, snapshots, codegen and `@generated` files are tagged, dimmed, sorted last, and excluded from findings
 - **Per-repo instructions** — your own rules per repository, edited in the app and stored app-side (or a committed `.margin/margin.md` for team-shared rules); injected into every review and comment thread
+- **Repo conventions** — the repository's own `CLAUDE.md` is handed to every reviewer as the rules the change has to meet, the same conventions Claude Code works to in that repo
+- **Your Claude Code settings** — reviews run on the default model from `~/.claude/settings.json` (and inherit its `env`), so Margin reviews with whatever `claude` itself would use; the reviewed repo's own `.claude/settings.json` is never loaded, so a branch's hooks can't run during its review
 - **Export** — save a review as Markdown (summary, findings with verdicts and their threads, comment threads) to paste into a PR description or hand to a teammate
 
 ### Diff & chat

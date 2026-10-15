@@ -1231,7 +1231,7 @@ export function App() {
                 onChange={(e) => patchSession(active.key, { modelChoice: e.target.value || undefined })}
               >
                 <option value="">default</option>
-                <option value="claude-fable-5">fable</option>
+                <option value="fable">fable</option>
                 <option value="opus">opus</option>
                 <option value="sonnet">sonnet</option>
                 <option value="haiku">haiku</option>

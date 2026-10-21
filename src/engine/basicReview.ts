@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { generatedFilesNote } from '../shared/generated.js';
 import { conventionsPreamble, mergeInstructions, readRepoConventions, readRepoInstructionsFile } from './instructions.js';
+import { ReviewCancelledError, throwIfCancelled } from './types.js';
 import type { Finding, ReviewOptions, ReviewTarget } from './types.js';
 import { parseReviewOutput } from './review.js';
 import { branchDiff, createWorktree, removeWorktree, workingTreeDiff, changedPaths, usableSinceSha } from './worktree.js';
@@ -149,6 +150,19 @@ ${fileSections.join('\n\n')}`;
 
     type Msg = { role: string; content: string };
 
+    // A hung endpoint must fail the finder, not pin the whole review; a user
+    // cancel ends it at once.
+    const requestSignal = () =>
+      opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(5 * 60_000)]) : AbortSignal.timeout(5 * 60_000);
+    const requestFailed = (err: unknown): never => {
+      if (opts.signal?.aborted) throw new ReviewCancelledError();
+      if ((err as Error).name === 'TimeoutError') {
+        throw new Error(`${provider.model} endpoint produced no response for 5 minutes — gave up`);
+      }
+      throw err;
+    };
+
+    throwIfCancelled(opts.signal);
     const ollamaOrigin = await detectOllama(provider.baseUrl);
     const numCtx = ollamaNumCtx(SYSTEM_PROMPT.length + user.length);
     if (ollamaOrigin) {
@@ -169,14 +183,8 @@ ${fileSections.join('\n\n')}`;
           ...(jsonMode ? { format: 'json' } : {}),
           options: { num_ctx: numCtx },
         }),
-        // A hung endpoint must fail the finder, not pin the whole review.
-        signal: AbortSignal.timeout(5 * 60_000),
-      }).catch((err: unknown) => {
-        if ((err as Error).name === 'TimeoutError') {
-          throw new Error(`${provider.model} endpoint produced no response for 5 minutes — gave up`);
-        }
-        throw err;
-      });
+        signal: requestSignal(),
+      }).catch(requestFailed);
       if (!res.ok) throw new Error(`${tag}: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
       const data = (await res.json()) as { message?: { content?: string } };
       return data.message?.content ?? '';
@@ -194,14 +202,8 @@ ${fileSections.join('\n\n')}`;
           messages,
           ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
         }),
-        // A hung endpoint must fail the finder, not pin the whole review.
-        signal: AbortSignal.timeout(5 * 60_000),
-      }).catch((err: unknown) => {
-        if ((err as Error).name === 'TimeoutError') {
-          throw new Error(`${provider.model} endpoint produced no response for 5 minutes — gave up`);
-        }
-        throw err;
-      });
+        signal: requestSignal(),
+      }).catch(requestFailed);
       if (!res.ok) {
         const body = (await res.text()).slice(0, 300);
         // Some OpenAI-compatible servers reject response_format — retry without.

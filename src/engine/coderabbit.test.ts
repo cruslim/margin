@@ -140,3 +140,30 @@ describe('coderabbit liveness ticker', () => {
     expect(lines.filter((l) => l.includes('still')).length).toBe(before);
   });
 });
+
+describe('coderabbit cancel', () => {
+  it('kills the CLI and rejects as cancelled when the review is cancelled', async () => {
+    const cancel = new AbortController();
+    const start = Date.now();
+    setTimeout(() => cancel.abort(), 150);
+    await expect(
+      runCodeRabbitReview(target, undefined, {
+        inactivityMs: 10_000,
+        signal: cancel.signal,
+        spawnOverride: { command: 'sleep', args: ['30'] },
+      }),
+    ).rejects.toThrow(/Review cancelled/);
+    expect(Date.now() - start).toBeLessThan(5000);
+  });
+
+  it('refuses to start once already cancelled', async () => {
+    const cancel = new AbortController();
+    cancel.abort();
+    await expect(
+      runCodeRabbitReview(target, undefined, {
+        signal: cancel.signal,
+        spawnOverride: { command: 'sleep', args: ['30'] },
+      }),
+    ).rejects.toThrow(/Review cancelled/);
+  });
+});

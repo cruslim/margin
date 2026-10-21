@@ -1,6 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { generatedFilesNote } from '../shared/generated.js';
 import { conventionsPreamble, mergeInstructions, readRepoConventions, readRepoInstructionsFile } from './instructions.js';
+import { queryAbort, ReviewCancelledError, throwIfCancelled } from './types.js';
 import type { Finding, ReviewOptions, ReviewResult, ReviewTarget, TokenUsage } from './types.js';
 import { branchDiff, createWorktree, resolveSha, usableSinceSha, workingTreeDiff } from './worktree.js';
 
@@ -115,6 +116,7 @@ export async function runReview(
   let usage: TokenUsage | null = null;
 
   const runQuery = async (): Promise<void> => {
+  throwIfCancelled(opts.signal);
   sessionId = '';
   resultText = '';
   costUsd = null;
@@ -123,6 +125,7 @@ export async function runReview(
   const stream = query({
     prompt: reviewPrompt(diff, opts, projectInstructions, conventions),
     options: {
+      abortController: queryAbort(opts.signal),
       cwd: workDir,
       // The user's own Claude Code settings apply (default model, env), so a
       // review runs on the same model the CLI would. The reviewed repo's
@@ -168,6 +171,9 @@ export async function runReview(
     }
   }
   } catch (err) {
+    // A cancelled query ends however the SDK ends it — report the cancel, not
+    // the symptom.
+    if (opts.signal?.aborted) throw new ReviewCancelledError();
     // Some models' CLI sessions exit non-zero after already delivering the
     // result — don't discard a completed review over a shutdown error.
     if (!resultText) throw err;
@@ -178,8 +184,8 @@ export async function runReview(
     await runQuery();
   } catch (err) {
     // One automatic retry for server-side blips; caller mistakes (auth, bad
-    // ref, empty diff) and repeated failures stay immediate.
-    if (!TRANSIENT_API_ERROR.test(String(err))) throw err;
+    // ref, empty diff), cancels and repeated failures stay immediate.
+    if (opts.signal?.aborted || !TRANSIENT_API_ERROR.test(String(err))) throw err;
     events.onProgress?.('[review] transient API error — retrying once in 5s…');
     await new Promise((resolve) => setTimeout(resolve, 5000));
     await runQuery();

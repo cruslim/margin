@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { ReviewCancelledError, throwIfCancelled } from './types.js';
 import type { Finding, ReviewTarget } from './types.js';
 import { createWorktree, effectiveBaseSha, removeWorktree } from './worktree.js';
 
@@ -64,8 +65,9 @@ const INACTIVITY_MS = 5 * 60_000;
  */
 const LIVENESS_TICK_MS = 60_000;
 
-/** Test seam: override the spawned command, the inactivity window and the liveness tick. */
+/** The review's cancel signal, plus test seams: the spawned command, the inactivity window and the liveness tick. */
 export interface CodeRabbitRunOptions {
+  signal?: AbortSignal;
   inactivityMs?: number;
   livenessTickMs?: number;
   spawnOverride?: { command: string; args: string[] };
@@ -80,6 +82,7 @@ export async function runCodeRabbitReview(
   onProgress?: (line: string) => void,
   runOpts: CodeRabbitRunOptions = {},
 ): Promise<{ findings: Finding[] }> {
+  throwIfCancelled(runOpts.signal);
   let workDir = target.repoPath;
   let ownWorktree = false;
   if (target.headRef) {
@@ -135,6 +138,16 @@ export async function runCodeRabbitReview(
       };
       resetWatchdog();
 
+      // User cancel: the CLI's own exit handling below would read a killed
+      // process as a failure, so settle first and let `close` find it settled.
+      const onCancel = () => {
+        clearTimeout(watchdog);
+        clearInterval(ticker);
+        child.kill();
+        reject(new ReviewCancelledError());
+      };
+      runOpts.signal?.addEventListener('abort', onCancel, { once: true });
+
       child.stdout.on('data', (chunk: Buffer) => {
         resetWatchdog();
         buffer += chunk.toString();
@@ -175,6 +188,7 @@ export async function runCodeRabbitReview(
       child.on('close', (code) => {
         clearTimeout(watchdog);
         clearInterval(ticker);
+        runOpts.signal?.removeEventListener('abort', onCancel);
         if (completed) resolve({ findings });
         else if (lastError) reject(new Error(`coderabbit: ${lastError}`));
         else if (code === 0) reject(new Error('coderabbit exited without completing the review'));

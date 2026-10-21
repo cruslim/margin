@@ -9,6 +9,7 @@ const api: MarginApi = {
   refState: (target) => ipcRenderer.invoke('git:refState', target),
   fileDiff: (target, path, range) => ipcRenderer.invoke('diff:file', target, path, range),
   runReview: (sessionKey, target, opts) => ipcRenderer.invoke('review:run', sessionKey, target, opts),
+  cancelReview: (sessionKey) => ipcRenderer.invoke('review:cancel', sessionKey),
   onChatDelta: (cb) => {
     const listener = (_e: unknown, sessionKey: string, delta: string) => cb(sessionKey, delta);
     ipcRenderer.on('chat:delta', listener);

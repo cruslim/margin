@@ -1,4 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { queryAbort, ReviewCancelledError, throwIfCancelled } from './types.js';
 import type { Finding, ReviewTarget } from './types.js';
 import { branchDiff, createWorktree, removeWorktree, workingTreeDiff } from './worktree.js';
 
@@ -20,10 +21,11 @@ export interface VerifyResult {
 export async function verifyFindings(
   target: ReviewTarget,
   findings: Finding[],
-  opts: { model?: string } = {},
+  opts: { model?: string; signal?: AbortSignal } = {},
   onProgress?: (line: string) => void,
 ): Promise<VerifyResult> {
   if (findings.length === 0) return { findings, costUsd: null, model: '' };
+  throwIfCancelled(opts.signal);
 
   let diff: string;
   let workDir: string;
@@ -66,6 +68,7 @@ Include a verdict for every finding.`;
     const stream = query({
       prompt,
       options: {
+        abortController: queryAbort(opts.signal),
         cwd: workDir,
         // User settings only — see review.ts.
         settingSources: ['user'],
@@ -96,6 +99,7 @@ Include a verdict for every finding.`;
         }
       }
     } catch (err) {
+      if (opts.signal?.aborted) throw new ReviewCancelledError();
       if (!resultText) throw err;
     }
 

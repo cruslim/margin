@@ -308,6 +308,11 @@ export interface MarginApi {
     target: ReviewTarget,
     opts?: { model?: string; sinceSha?: string },
   ): Promise<ReviewRunResult>;
+  /**
+   * Stop the session's in-flight review. Its runReview call then rejects with
+   * "Review cancelled"; no-op when nothing is running.
+   */
+  cancelReview(sessionKey: string): Promise<void>;
   onReviewProgress(cb: (sessionKey: string, line: string) => void): () => void;
   /** Streaming text deltas for the in-flight chat/comment reply of a session. */
   onChatDelta(cb: (sessionKey: string, delta: string) => void): () => void;

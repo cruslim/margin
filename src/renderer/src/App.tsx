@@ -482,7 +482,10 @@ export function App() {
     [patchSession],
   );
 
+  // A cancel throws away work already paid for, and the button sits next to
+  // the one the user just pressed — ask first, like applying a patch does.
   const cancelReview = useCallback((session: Session) => {
+    if (!window.confirm('Stop this review? Findings so far will be discarded.')) return;
     void window.margin.cancelReview(session.key);
   }, []);
 

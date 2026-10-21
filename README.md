@@ -13,6 +13,7 @@ Local AI code review with chat. Review branches and uncommitted changes before t
 - **Local refs, no PR required** — pick a branch (searchable, sorted by latest commit) against any base, or review your uncommitted working tree
 - **Rebase-aware** — after rebasing onto `origin/main` the changeset still shows only your commits, even while local `main` is behind; branches already landed upstream are flagged `✓ merged` instead of coming up empty; git activity from your terminal is picked up when the window regains focus
 - **Delta re-reviews** — "Review new changes" covers only commits since the last review, and falls back to a full review when a rebase orphans the delta point
+- **Cancel any time** — stop a running review mid-flight; every finder (Claude, specialists, verifier, OpenAI-compatible, CodeRabbit) is torn down and the session goes back to what it showed before
 - **Verifier pass** — an agentic session cross-examines every finding against the code and marks it verified/refuted/uncertain with reasons
 - **Multi-model finders** — an OpenAI-compatible endpoint (GPT/Ollama/OpenRouter) and the CodeRabbit CLI can run alongside the Claude reviewer; findings are source-tagged, with a per-reviewer Agent-log filter
 - **Dismissal memory** — dismissed findings are hidden and never re-reported (per-repo `dismissals.json`, restorable)

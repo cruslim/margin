@@ -122,6 +122,7 @@ if (app.isPackaged) {
 app.setPath('userData', join(app.getPath('appData'), 'margin'));
 import { openRepo, changedFiles, branchCommits, fileDiff, applyPatch, refState } from './gitService.js';
 import { runReview } from '../engine/review.js';
+import { ReviewCancelledError } from '../engine/types.js';
 import { toAgentDefinitions } from '../engine/agents.js';
 import { chat } from '../engine/chat.js';
 import { parseModelList, runBasicReview } from '../engine/basicReview.js';
@@ -222,6 +223,14 @@ app.whenReady().then(async () => {
     }, delayMs);
   };
 
+  // In-flight reviews by session, so review:cancel can reach the one the user
+  // is looking at. A review also stops when its window goes away: nobody is
+  // left to receive the result, and the finders cost money.
+  const runningReviews = new Map<string, AbortController>();
+  ipcMain.handle('review:cancel', (_e, sessionKey: string) => {
+    runningReviews.get(sessionKey)?.abort();
+  });
+
   ipcMain.handle('review:run', async (event, sessionKey: string, target: ReviewTarget, opts?: { model?: string; sinceSha?: string }) => {
     const sender = event.sender;
     const dismissed = await storage.listDismissals(target.repoPath);
@@ -230,6 +239,12 @@ app.whenReady().then(async () => {
     const progress = (line: string) => {
       if (!sender.isDestroyed()) sender.send('review:progress', sessionKey, line);
     };
+    const cancel = new AbortController();
+    const { signal } = cancel;
+    runningReviews.get(sessionKey)?.abort();
+    runningReviews.set(sessionKey, cancel);
+    const onSenderGone = () => cancel.abort();
+    sender.once('destroyed', onSenderGone);
     try {
       // Extra finders run in parallel with the agentic review; each is
       // best-effort — a failed finder becomes a transcript line, not a
@@ -239,21 +254,26 @@ app.whenReady().then(async () => {
       if (settings.openai.enabled) {
         for (const model of parseModelList(settings.openai.model)) {
           finderNames.push(model);
-          extraFinders.push(runBasicReview(target, { ...settings.openai, model }, { ...opts, dismissed, instructions }, progress));
+          extraFinders.push(
+            runBasicReview(target, { ...settings.openai, model }, { ...opts, dismissed, instructions, signal }, progress),
+          );
         }
       }
       if (settings.coderabbit.enabled) {
         finderNames.push('coderabbit');
-        extraFinders.push(runCodeRabbitReview(target, progress));
+        extraFinders.push(runCodeRabbitReview(target, progress, { signal }));
       }
       for (const agent of settings.agents) {
         if (!agent.finder || !agent.name.trim() || !agent.instructions.trim()) continue;
         finderNames.push(`@${agent.name.trim()}`);
-        extraFinders.push(runSpecialistReview(target, agent, { ...opts, dismissed, instructions }, progress));
+        extraFinders.push(runSpecialistReview(target, agent, { ...opts, dismissed, instructions, signal }, progress));
       }
 
+      // The extra finders are best-effort, so Promise.all only settles on the
+      // main review; a cancelled main review therefore rejects right away while
+      // the finders wind down on the same signal.
       const [main, extras] = await Promise.all([
-        runReview(target, { onProgress: progress }, { ...opts, dismissed, instructions }),
+        runReview(target, { onProgress: progress }, { ...opts, dismissed, instructions, signal }),
         Promise.allSettled(extraFinders),
       ]);
 
@@ -275,17 +295,25 @@ app.whenReady().then(async () => {
           const verified = await verifyFindings(
             target,
             findings,
-            { model: settings.verifier.model || opts?.model },
+            { model: settings.verifier.model || opts?.model, signal },
             progress,
           );
           findings = verified.findings;
           costUsd = (costUsd ?? 0) + (verified.costUsd ?? 0);
         } catch (err) {
+          if (signal.aborted) throw err;
           progress(`[verifier] failed: ${String(err).slice(0, 200)} — findings left unverified`);
         }
       }
       return { ...main, findings, costUsd, specialistReports };
+    } catch (err) {
+      // Whatever a finder tripped over while being torn down, the user asked
+      // for this — and the renderer keys off the message.
+      if (signal.aborted) throw new ReviewCancelledError();
+      throw err;
     } finally {
+      sender.removeListener('destroyed', onSenderGone);
+      if (runningReviews.get(sessionKey) === cancel) runningReviews.delete(sessionKey);
       // In auto-run smoke mode, capture after the review settles into the UI
       // (unless a smoke chat turn follows — then capture after that instead).
       if (process.env.MARGIN_SMOKE_RUN && !process.env.MARGIN_SMOKE_CHAT) {

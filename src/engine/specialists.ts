@@ -2,6 +2,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import { generatedFilesNote } from '../shared/generated.js';
 import { conventionsPreamble, mergeInstructions, readRepoConventions, readRepoInstructionsFile } from './instructions.js';
 import type { AgentConfig } from './agents.js';
+import { queryAbort, ReviewCancelledError, throwIfCancelled } from './types.js';
 import type { Finding, ReviewOptions, ReviewTarget, RubricCheckResult, SpecialistReport } from './types.js';
 import { scanForJson, summarizeInput, TRANSIENT_API_ERROR } from './review.js';
 import { branchDiff, createWorktree, removeWorktree, usableSinceSha, workingTreeDiff } from './worktree.js';
@@ -187,11 +188,13 @@ export async function runSpecialistReview(
     let costUsd: number | null = null;
 
     const runQuery = async (): Promise<void> => {
+      throwIfCancelled(opts.signal);
       resultText = '';
       costUsd = null;
       const stream = query({
         prompt: specialistPrompt(checks, diff, { ...opts, sinceSha }, projectInstructions, conventions),
         options: {
+          abortController: queryAbort(opts.signal),
           cwd: workDir,
           // User settings only — see review.ts.
           settingSources: ['user'],
@@ -225,6 +228,7 @@ export async function runSpecialistReview(
           }
         }
       } catch (err) {
+        if (opts.signal?.aborted) throw new ReviewCancelledError();
         // Some models' CLI sessions exit non-zero after already delivering the
         // result — don't discard a completed pass over a shutdown error.
         if (!resultText) throw err;
@@ -234,7 +238,7 @@ export async function runSpecialistReview(
     try {
       await runQuery();
     } catch (err) {
-      if (!TRANSIENT_API_ERROR.test(String(err))) throw err;
+      if (opts.signal?.aborted || !TRANSIENT_API_ERROR.test(String(err))) throw err;
       onProgress?.(`[${tag}] transient API error — retrying once in 5s…`);
       await new Promise((resolve) => setTimeout(resolve, 5000));
       await runQuery();

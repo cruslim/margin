@@ -465,12 +465,26 @@ export function App() {
           }));
           return null;
         }
+        // The user stopped it: put back what the session showed before the
+        // run started, with the partial log kept for reference.
+        if (String(err).includes('Review cancelled')) {
+          patchSession(session.key, (s) => ({
+            status: session.status === 'done' ? 'done' : 'idle',
+            findings: session.findings,
+            transcript: [...s.transcript, 'Review cancelled.'],
+          }));
+          return null;
+        }
         patchSession(session.key, { status: 'error', error: String(err) });
         return null;
       }
     },
     [patchSession],
   );
+
+  const cancelReview = useCallback((session: Session) => {
+    void window.margin.cancelReview(session.key);
+  }, []);
 
   const dismissFinding = useCallback(
     async (session: Session, finding: Finding) => {
@@ -1255,6 +1269,11 @@ export function App() {
                 onClick={() => runReview(active, 'full')}
               >
                 full re-review
+              </button>
+            )}
+            {active.status === 'reviewing' && (
+              <button className="icon-btn" title="Stop this review" onClick={() => cancelReview(active)}>
+                cancel
               </button>
             )}
             <button

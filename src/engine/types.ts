@@ -79,6 +79,37 @@ export interface ReviewOptions {
   dismissed?: DismissedFinding[];
   /** User's per-repo instructions stored in the app, merged with the repo's .margin/margin.md. */
   instructions?: string;
+  /**
+   * Fires when the user cancels the review. Every finder stops what it is
+   * doing and rejects with a ReviewCancelledError; main-process only, never
+   * crosses IPC.
+   */
+  signal?: AbortSignal;
+}
+
+/** What every finder rejects with once its review's signal has fired. */
+export class ReviewCancelledError extends Error {
+  constructor() {
+    super('Review cancelled');
+    this.name = 'ReviewCancelledError';
+  }
+}
+
+/** Fail fast at a step boundary when the review has already been cancelled. */
+export function throwIfCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new ReviewCancelledError();
+}
+
+/**
+ * An AbortController for one SDK query, tied to the review's signal. The SDK
+ * wants a controller it owns per query, so the review-wide signal is relayed
+ * rather than shared.
+ */
+export function queryAbort(signal?: AbortSignal): AbortController {
+  const controller = new AbortController();
+  if (signal?.aborted) controller.abort();
+  else signal?.addEventListener('abort', () => controller.abort(), { once: true });
+  return controller;
 }
 
 export interface ReviewResult {

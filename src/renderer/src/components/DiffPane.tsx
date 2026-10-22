@@ -165,6 +165,9 @@ export function DiffPane(props: {
   useEffect(() => {
     localStorage.setItem(MODE_KEY, mode === DiffModeEnum.Unified ? 'unified' : 'split');
   }, [mode]);
+  /** Every hunk opened out to the whole file. Per file — a long file shouldn't land fully open. */
+  const [wholeFile, setWholeFile] = useState(false);
+  useEffect(() => setWholeFile(false), [props.path]);
   const [pendingRange, setPendingRange] = useState<{ side: 'old' | 'new'; start: number; end: number } | null>(null);
   const msRef = useRef<DiffViewWithMultiSelectRef>(null);
   /** The scroll container the lib renders its table into — watched for rebuilds. */
@@ -401,6 +404,34 @@ export function DiffPane(props: {
 
   const pendingTarget = pendingRange ? targetFor(pendingRange.side, pendingRange.start, pendingRange.end) : null;
 
+  // Memoized so the viewer keeps its DiffFile: a new `data` object makes it build
+  // a fresh one, dropping anything opened out — the whole-file view with it.
+  const viewData = useMemo(
+    () =>
+      diff && {
+        oldFile: { fileName: diff.path, content: diff.oldContent, fileLang: diff.lang },
+        newFile: { fileName: diff.path, content: diff.newContent, fileLang: diff.lang },
+        hunks: diff.hunks,
+      },
+    [diff],
+  );
+
+  // Both modes at once, so switching split/unified keeps the whole file. Runs after
+  // the viewer's own effects (a child's run first), so its lines are built by now.
+  useEffect(() => {
+    const file = msRef.current?.getDiffFileInstance();
+    if (!file) return;
+    if (wholeFile) {
+      file.onAllExpand('split');
+      file.onAllExpand('unified');
+    } else {
+      // Only undo our own expand — collapsing unasked would also fold hunks
+      // opened by hand with the viewer's expand arrows.
+      if (file.hasExpandSplitAll) file.onAllCollapse('split');
+      if (file.hasExpandUnifiedAll) file.onAllCollapse('unified');
+    }
+  }, [wholeFile, viewData]);
+
   if (error) return <div className="empty-note">{error}</div>;
   if (!diff) return <div className="empty-note">Loading diff…</div>;
   if (diff.hunks.length === 0) return <div className="empty-note">No changes in this file</div>;
@@ -426,6 +457,23 @@ export function DiffPane(props: {
         </span>
         {/* Which view you're in, not what the button does — the old single
             button was labelled with its action and read as the current mode. */}
+        <span className="diff-view-controls">
+        <span className="view-toggle">
+          <button
+            className={`icon-btn ${wholeFile ? '' : 'active'}`}
+            title="Only the changed lines and the context around them"
+            onClick={() => setWholeFile(false)}
+          >
+            changes
+          </button>
+          <button
+            className={`icon-btn ${wholeFile ? 'active' : ''}`}
+            title="Every line of the file, with the changes in place"
+            onClick={() => setWholeFile(true)}
+          >
+            whole file
+          </button>
+        </span>
         <span className="view-toggle">
           <button
             className={`icon-btn ${splitMode ? 'active' : ''}`}
@@ -441,6 +489,7 @@ export function DiffPane(props: {
           >
             unified
           </button>
+        </span>
         </span>
       </div>
       <div className="diff-body">
@@ -475,11 +524,7 @@ export function DiffPane(props: {
                 }
               : null;
           }}
-          data={{
-            oldFile: { fileName: diff.path, content: diff.oldContent, fileLang: diff.lang },
-            newFile: { fileName: diff.path, content: diff.newContent, fileLang: diff.lang },
-            hunks: diff.hunks,
-          }}
+          data={viewData ?? undefined}
           diffViewMode={mode}
           diffViewTheme={props.themeMode}
           diffViewHighlight
